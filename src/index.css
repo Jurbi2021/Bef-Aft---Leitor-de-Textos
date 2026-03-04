@@ -1,0 +1,87 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 98%;
+    --foreground: 240 10% 10%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 262 80% 55%;
+    --radius: 0.5rem;
+
+    --primary: 262 80% 55%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 5% 94%;
+    --secondary-foreground: 240 10% 10%;
+
+    --muted: 240 5% 94%;
+    --muted-foreground: 240 5% 50%;
+
+    --accent: 262 80% 96%;
+    --accent-foreground: 262 80% 40%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --sidebar: 262 50% 18%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-accent: 262 50% 28%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 262 50% 26%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+}
+
+/* TipTap editor styles */
+.tiptap {
+  @apply outline-none min-h-[80px];
+}
+
+.tiptap p.is-editor-empty:first-child::before {
+  @apply text-muted-foreground pointer-events-none float-left h-0;
+  content: attr(data-placeholder);
+}
+
+.tiptap ul,
+.tiptap ol {
+  @apply pl-5;
+}
+
+.tiptap ul {
+  @apply list-disc;
+}
+
+.tiptap ol {
+  @apply list-decimal;
+}
+
+.tiptap strong {
+  @apply font-semibold;
+}
+
+.tiptap em {
+  @apply italic;
+}
+
+/* Slider handle */
+.rcs-handle-line {
+  background: hsl(262, 80%, 55%) !important;
+}
+
+.rcs-handle-button {
+  background: hsl(262, 80%, 55%) !important;
+  border-color: white !important;
+}

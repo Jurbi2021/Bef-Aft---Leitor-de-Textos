@@ -13,8 +13,14 @@ export function useAuthInit() {
       setLoading(false)
     }, 8000)
 
-    async function fetchProfile(userId: string, userEmail?: string, userName?: string) {
-      setLoading(true)
+    async function fetchProfile(
+      userId: string,
+      userEmail?: string,
+      userName?: string,
+      options?: { showLoading?: boolean }
+    ) {
+      const showLoading = options?.showLoading !== false
+      if (showLoading) setLoading(true)
       try {
         let { data } = await supabase
           .from('profiles')
@@ -44,13 +50,14 @@ export function useAuthInit() {
       }
     }
 
+    // Apenas o carregamento inicial mostra o spinner; trocar de aba não deve recarregar a tela
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     supabase.auth.getSession().then(({ data: { session } }: { data: { session: any } }) => {
       if (cancelled) return
       setUser(session?.user ?? null)
       if (session?.user) {
         const u = session.user
-        fetchProfile(u.id, u.email, u.user_metadata?.full_name ?? u.user_metadata?.name)
+        fetchProfile(u.id, u.email, u.user_metadata?.full_name ?? u.user_metadata?.name, { showLoading: true })
       } else {
         setLoading(false)
       }
@@ -61,7 +68,8 @@ export function useAuthInit() {
       setUser(session?.user ?? null)
       if (session?.user) {
         const u = session.user
-        fetchProfile(u.id, u.email, u.user_metadata?.full_name ?? u.user_metadata?.name)
+        // Não mostrar loading ao revalidar sessão (ex.: ao voltar na aba), evita perder edição
+        fetchProfile(u.id, u.email, u.user_metadata?.full_name ?? u.user_metadata?.name, { showLoading: false })
       } else {
         reset()
       }

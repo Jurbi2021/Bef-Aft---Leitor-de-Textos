@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Loader2, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Client, FolderWithPages, Page, Section } from '@/lib/database.types'
 import { Button } from '@/components/ui/Button'
@@ -16,6 +16,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { Sidebar } from '@/components/Sidebar/Sidebar'
 
 type DialogType = 'folder' | 'page' | 'section' | null
+type EditTarget = { type: 'folder' | 'page' | 'section'; id: string; name: string }
 
 export function ClientView() {
   const { clientId } = useParams<{ clientId: string }>()
@@ -30,6 +31,9 @@ export function ClientView() {
   const [dialogParentId, setDialogParentId] = useState<string>('')
   const [inputName, setInputName] = useState('')
   const [creating, setCreating] = useState(false)
+
+  const [editingItem, setEditingItem] = useState<EditTarget | null>(null)
+  const [savingRename, setSavingRename] = useState(false)
 
   const isAdmin = profile?.role === 'admin'
 
@@ -65,7 +69,71 @@ export function ClientView() {
   function openDialog(type: DialogType, parentId = '') {
     setDialogType(type)
     setDialogParentId(parentId)
+    setEditingItem(null)
     setInputName('')
+  }
+
+  function openRename(type: EditTarget['type'], id: string, name: string) {
+    setEditingItem({ type, id, name })
+    setInputName(name)
+    setDialogType(null)
+  }
+
+  function closeEditDialog() {
+    setEditingItem(null)
+    setInputName('')
+  }
+
+  async function handleRename() {
+    if (!editingItem || !inputName.trim()) return
+    setSavingRename(true)
+    const table = editingItem.type === 'folder' ? 'folders' : editingItem.type === 'page' ? 'pages' : 'sections'
+    const { error } = await supabase.from(table).update({ name: inputName.trim() }).eq('id', editingItem.id) as { error: unknown }
+    if (!error) {
+      setFolders((prev) =>
+        prev.map((f) => {
+          if (editingItem.type === 'folder' && f.id === editingItem.id) return { ...f, name: inputName.trim() }
+          if (editingItem.type === 'page') {
+            return { ...f, pages: f.pages.map((p) => (p.id === editingItem.id ? { ...p, name: inputName.trim() } : p)) }
+          }
+          if (editingItem.type === 'section') {
+            return {
+              ...f,
+              pages: f.pages.map((p) => ({
+                ...p,
+                sections: p.sections.map((s) => (s.id === editingItem.id ? { ...s, name: inputName.trim() } : s)),
+              })),
+            }
+          }
+          return f
+        })
+      )
+      closeEditDialog()
+    }
+    setSavingRename(false)
+  }
+
+  async function handleDeletePage(pageId: string) {
+    if (!confirm('Deletar esta página e todas as seções?')) return
+    const { error } = await supabase.from('pages').delete().eq('id', pageId) as { error: unknown }
+    if (!error) {
+      setFolders((prev) =>
+        prev.map((f) => ({ ...f, pages: f.pages.filter((p) => p.id !== pageId) }))
+      )
+    }
+  }
+
+  async function handleDeleteSection(sectionId: string) {
+    if (!confirm('Deletar esta seção?')) return
+    const { error } = await supabase.from('sections').delete().eq('id', sectionId) as { error: unknown }
+    if (!error) {
+      setFolders((prev) =>
+        prev.map((f) => ({
+          ...f,
+          pages: f.pages.map((p) => ({ ...p, sections: p.sections.filter((s) => s.id !== sectionId) })),
+        }))
+      )
+    }
   }
 
   async function handleCreate() {
@@ -206,6 +274,16 @@ export function ClientView() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="h-7 w-7"
+                          onClick={() => openRename('folder', folder.id, folder.name)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {isAdmin && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           className="h-7 w-7 text-destructive hover:text-destructive"
                           onClick={async () => {
                             if (!confirm('Deletar esta pasta e todos os seus conteúdos?')) return
@@ -223,27 +301,73 @@ export function ClientView() {
                       <div key={page.id} className="rounded-lg border border-border/60 bg-muted/20">
                         <div className="flex items-center justify-between border-b border-border/40 px-3 py-2">
                           <p className="text-sm font-medium">{page.name}</p>
-                          {isAdmin && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 gap-1 text-xs"
-                              onClick={() => openDialog('section', page.id)}
-                            >
-                              <Plus className="h-3 w-3" /> Seção
-                            </Button>
-                          )}
+                          <div className="flex items-center gap-0.5">
+                            {isAdmin && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 gap-1 text-xs"
+                                onClick={() => openDialog('section', page.id)}
+                              >
+                                <Plus className="h-3 w-3" /> Seção
+                              </Button>
+                            )}
+                            {isAdmin && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={(e) => { e.stopPropagation(); openRename('page', page.id, page.name) }}
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                            )}
+                            {isAdmin && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-destructive hover:text-destructive"
+                                onClick={(e) => { e.stopPropagation(); handleDeletePage(page.id) }}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
                         </div>
                         <div className="p-2 space-y-1">
                           {page.sections.map((section) => (
-                            <button
+                            <div
                               key={section.id}
-                              onClick={() => navigate(`/section/${section.id}`)}
-                              className="w-full rounded-md px-3 py-2 text-left text-xs hover:bg-accent hover:text-accent-foreground transition-colors flex items-center justify-between group"
+                              className="flex items-center gap-1 group/item rounded-md hover:bg-accent/50"
                             >
-                              <span className="truncate">{section.name}</span>
-                              <ArrowLeft className="h-3 w-3 rotate-180 opacity-0 group-hover:opacity-100 transition-opacity" />
-                            </button>
+                              <button
+                                onClick={() => navigate(`/section/${section.id}`)}
+                                className="flex-1 min-w-0 rounded-md px-3 py-2 text-left text-xs hover:bg-accent hover:text-accent-foreground transition-colors flex items-center justify-between"
+                              >
+                                <span className="truncate">{section.name}</span>
+                                <ArrowLeft className="h-3 w-3 rotate-180 opacity-0 group-hover/item:opacity-100 transition-opacity shrink-0 ml-1" />
+                              </button>
+                              {isAdmin && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 opacity-0 group-hover/item:opacity-100 shrink-0"
+                                    onClick={(e) => { e.stopPropagation(); openRename('section', section.id, section.name) }}
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 text-destructive hover:text-destructive opacity-0 group-hover/item:opacity-100 shrink-0"
+                                    onClick={(e) => { e.stopPropagation(); handleDeleteSection(section.id) }}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
                           ))}
                           {page.sections.length === 0 && (
                             <p className="px-3 py-2 text-xs text-muted-foreground italic">Nenhuma seção.</p>
@@ -290,6 +414,35 @@ export function ClientView() {
               className="w-full"
             >
               {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Criar'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename Dialog */}
+      <Dialog open={editingItem !== null} onOpenChange={(o) => !o && closeEditDialog()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {editingItem?.type === 'folder' && 'Renomear pasta'}
+              {editingItem?.type === 'page' && 'Renomear página'}
+              {editingItem?.type === 'section' && 'Renomear seção'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <Input
+              placeholder="Nome"
+              value={inputName}
+              onChange={(e) => setInputName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleRename()}
+              autoFocus
+            />
+            <Button
+              onClick={handleRename}
+              disabled={savingRename || !inputName.trim()}
+              className="w-full"
+            >
+              {savingRename ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Salvar'}
             </Button>
           </div>
         </DialogContent>

@@ -9,7 +9,28 @@ interface SliderComparisonProps {
   contentAfter: string
 }
 
+/** Converte texto puro com \n em HTML com <br /> e escapa caracteres especiais. */
+function plainTextToHtml(text: string): string {
+  if (!text.trim()) return ''
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+  return escaped.replace(/\n/g, '<br />')
+}
+
+/** Se o conteúdo parecer HTML (contém tags), usa como está; senão trata como texto com quebras de linha. */
+function normalizeContentForDisplay(content: string): string {
+  if (!content.trim()) return ''
+  if (content.trimStart().startsWith('<') && (content.includes('</') || content.includes('/>'))) {
+    return content
+  }
+  return plainTextToHtml(content)
+}
+
 function TextPanel({ content, label }: { content: string; label: string }) {
+  const html = normalizeContentForDisplay(content)
   return (
     <div className="h-full w-full bg-background flex flex-col">
       <div className="flex items-center justify-center border-b border-border/60 py-2 shrink-0">
@@ -18,10 +39,10 @@ function TextPanel({ content, label }: { content: string; label: string }) {
         </span>
       </div>
       <ScrollArea className="flex-1 p-5">
-        {content ? (
+        {html ? (
           <div
             className="prose prose-sm max-w-none text-foreground leading-relaxed"
-            dangerouslySetInnerHTML={{ __html: content }}
+            dangerouslySetInnerHTML={{ __html: html }}
           />
         ) : (
           <p className="text-sm text-muted-foreground italic">Nenhum conteúdo ainda.</p>

@@ -39,8 +39,9 @@ export function Login() {
       >
         {/* Logo */}
         <div className="mb-8 flex flex-col items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20">
-            <AlignLeft className="h-6 w-6 text-white" />
+          <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20 overflow-hidden">
+            <img src="/leitor_bef_aft_logo.webp" alt="Leitor Bef/Aft" className="h-10 w-10 object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; const fb = e.currentTarget.nextElementSibling; if (fb) (fb as HTMLElement).classList.remove('hidden'); }} />
+            <span className="hidden absolute inset-0 items-center justify-center"><AlignLeft className="h-6 w-6 text-white" /></span>
           </div>
           <div className="text-center">
             <h1 className="text-2xl font-bold text-white tracking-tight">Leitor Bef/Aft</h1>

@@ -44,9 +44,27 @@ npm run dev
 No dashboard admin, em cada cliente há o botão **Conceder acesso** (ícone de usuário com +). Ao clicar:
 
 1. **Criar o usuário** no Supabase (Authentication > Users) e copiar o **User UID**.
-2. **Vincular o perfil** de duas formas:
-   - **Opção A:** Copiar o SQL exibido no modal, colar no SQL Editor do Supabase (substituir `COLE_O_UID_AQUI` pelo User UID) e executar.
+2. (Opcional) Informar o **Nome de exibição** — é o nome que aparece no chat e nas menções (@). Se não preencher, usa o nome do cliente.
+3. **Vincular o perfil** de duas formas:
+   - **Opção A:** Copiar o SQL exibido no modal, colar no SQL Editor do Supabase (substituir `COLE_O_UID_AQUI` pelo User UID e, se quiser, o nome entre aspas por outro) e executar.
    - **Opção B:** Colar o User UID no campo do modal e clicar em **Vincular agora** (é necessário ter rodado o `supabase-schema.sql`, que inclui a função `vincular_perfil_ao_cliente`).
+
+### Quando o usuário aparece em `profiles`
+
+- **Vincular agora (modal):** a função RPC cria ou atualiza a linha em `profiles` na hora. O usuário já aparece na tabela mesmo antes do primeiro login.
+- **SQL (Opção A):** o snippet usa `INSERT ... ON CONFLICT`, então também cria a linha se não existir. Basta substituir `COLE_O_UID_AQUI` pelo User UID e executar — não é preciso o usuário ter logado antes.
+
+Se o usuário for criado só no Auth e ninguém vincular (nem RPC nem SQL), a linha em `profiles` só é criada no **primeiro login** (o app cria com role `client` e sem `client_id` até alguém vincular).
+
+### Nome de exibição (para @ no chat)
+
+O **nome de exibição** vem da coluna `full_name` da tabela `profiles`. Ele é usado nas menções (@) no chat e na sidebar.
+
+- **Quando é definido:** ao fazer o primeiro login (usa nome do Auth ou e-mail); ou quando o admin vincula o perfil ao cliente (nome do cliente ou o campo "Nome de exibição" no modal).
+- **Editar manualmente:** no Supabase, vá em **Table Editor → profiles**, localize a linha do usuário (coluna `id` = User UID) e altere a coluna `full_name`. Ou no **SQL Editor**:
+  ```sql
+  UPDATE profiles SET full_name = 'Nome que aparece no chat' WHERE id = 'UUID_DO_USUARIO';
+  ```
 
 ## Estrutura
 

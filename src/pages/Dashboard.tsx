@@ -25,6 +25,7 @@ export function Dashboard() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [accessModalClient, setAccessModalClient] = useState<Client | null>(null)
   const [linkUserId, setLinkUserId] = useState('')
+  const [linkDisplayName, setLinkDisplayName] = useState('')
   const [linking, setLinking] = useState(false)
   const [linkError, setLinkError] = useState<string | null>(null)
   const [linkSuccess, setLinkSuccess] = useState(false)
@@ -93,12 +94,18 @@ export function Dashboard() {
       ? `https://supabase.com/dashboard/project/${supabaseProjectRef}/auth/users`
       : 'https://supabase.com/dashboard'
 
-  function getVincularSql(client: Client) {
-    return `UPDATE profiles SET role = 'client', client_id = '${client.id}', full_name = '${(client.name || '').replace(/'/g, "''")}' WHERE id = 'COLE_O_UID_AQUI';`
+  function getVincularSql(client: Client, displayName?: string) {
+    const name = (displayName ?? client.name ?? '').replace(/'/g, "''")
+    return `INSERT INTO profiles (id, role, client_id, full_name)
+VALUES ('COLE_O_UID_AQUI', 'client', '${client.id}', '${name}')
+ON CONFLICT (id) DO UPDATE SET
+  role = 'client',
+  client_id = EXCLUDED.client_id,
+  full_name = EXCLUDED.full_name;`
   }
 
   async function copySql(client: Client) {
-    await navigator.clipboard.writeText(getVincularSql(client))
+    await navigator.clipboard.writeText(getVincularSql(client, linkDisplayName || undefined))
     setSqlCopied(true)
     setTimeout(() => setSqlCopied(false), 2000)
   }
@@ -114,10 +121,11 @@ export function Dashboard() {
     }
     setLinkError(null)
     setLinking(true)
+    const displayName = (linkDisplayName || accessModalClient.name || '').trim()
     const { error } = await supabase.rpc('vincular_perfil_ao_cliente', {
       p_user_id: uid,
       p_client_id: accessModalClient.id,
-      p_full_name: accessModalClient.name,
+      p_full_name: displayName || accessModalClient.name,
     })
     setLinking(false)
     if (error) {
@@ -132,9 +140,15 @@ export function Dashboard() {
     }, 1500)
   }
 
+  function openAccessModal(client: Client) {
+    setAccessModalClient(client)
+    setLinkDisplayName(client.name ?? '')
+  }
+
   function closeAccessModal() {
     setAccessModalClient(null)
     setLinkUserId('')
+    setLinkDisplayName('')
     setLinkError(null)
     setLinkSuccess(false)
   }
@@ -240,7 +254,7 @@ export function Dashboard() {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7"
-                      onClick={() => setAccessModalClient(client)}
+                      onClick={() => openAccessModal(client)}
                       title="Conceder acesso"
                     >
                       <UserPlus className="h-3.5 w-3.5" />
@@ -282,6 +296,19 @@ export function Dashboard() {
               </p>
 
               <div className="space-y-2">
+                <label className="text-sm font-medium">Nome de exibição (para @ no chat)</label>
+                <Input
+                  placeholder="Ex.: Maria Silva"
+                  value={linkDisplayName}
+                  onChange={(e) => setLinkDisplayName(e.target.value)}
+                  className="text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Nome que aparece nas menções e na sidebar. Se vazio, usa o nome do cliente.
+                </p>
+              </div>
+
+              <div className="space-y-2">
                 <p className="text-sm font-medium">1. Criar o usuário no Supabase</p>
                 <p className="text-xs text-muted-foreground">
                   Crie um usuário (e-mail e senha) em Authentication. Depois copie o <strong>User UID</strong>.
@@ -301,7 +328,7 @@ export function Dashboard() {
                   Opção A — Cole o SQL no SQL Editor do Supabase (substitua <code className="bg-muted px-1 rounded">COLE_O_UID_AQUI</code> pelo User UID):
                 </p>
                 <pre className="bg-muted rounded-md p-3 text-xs overflow-x-auto whitespace-pre-wrap break-all">
-                  {getVincularSql(accessModalClient)}
+                  {getVincularSql(accessModalClient, linkDisplayName || undefined)}
                 </pre>
                 <Button variant="outline" size="sm" onClick={() => copySql(accessModalClient)}>
                   {sqlCopied ? <Check className="h-3.5 w-3.5 mr-1.5" /> : <Copy className="h-3.5 w-3.5 mr-1.5" />}

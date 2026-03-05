@@ -258,23 +258,6 @@ export function SectionView() {
             <p className="text-xs text-muted-foreground truncate">{client?.name}</p>
             <h1 className="text-sm font-semibold truncate">{section.name}</h1>
           </div>
-          {/* Aprovação de conteúdo — só seções normais */}
-          {isClient && !isSerp && (
-            <div className="flex items-center gap-1" title="Aprovar / Observações / Reprovar">
-              <button type="button" onClick={() => setApproval('approved')} disabled={approving} title="Aprovado"
-                className={`rounded-full p-1.5 transition-all ${approvalStatus === 'approved' ? 'bg-green-500/20 ring-2 ring-green-500 text-green-600' : 'text-muted-foreground hover:bg-green-500/10 hover:text-green-600'}`}>
-                <Check className="h-4 w-4" />
-              </button>
-              <button type="button" onClick={() => setApproval('approved_with_observations')} disabled={approving} title="Aprovado com observações"
-                className={`rounded-full p-1.5 transition-all ${approvalStatus === 'approved_with_observations' ? 'bg-amber-500/20 ring-2 ring-amber-500 text-amber-600' : 'text-muted-foreground hover:bg-amber-500/10 hover:text-amber-600'}`}>
-                <MessageCircle className="h-4 w-4" />
-              </button>
-              <button type="button" onClick={() => setApproval('rejected')} disabled={approving} title="Reprovado"
-                className={`rounded-full p-1.5 transition-all ${approvalStatus === 'rejected' ? 'bg-red-500/20 ring-2 ring-red-500 text-red-600' : 'text-muted-foreground hover:bg-red-500/10 hover:text-red-600'}`}>
-                <XCircle className="h-4 w-4" />
-              </button>
-            </div>
-          )}
           {isAdmin && !isSerp && (
             <div className="flex items-center gap-2">
               <ContentEditButton label="Editar Antes" editing={editingBefore}
@@ -288,6 +271,16 @@ export function SectionView() {
             </div>
           )}
         </header>
+
+        {/* Barra de aprovação — mesma posição e destaque para conteúdo e SERP */}
+        {isClient && (
+          <ApprovalBar
+            status={isSerp ? metaApprovalStatus : approvalStatus}
+            onApprove={isSerp ? setMetaApproval : setApproval}
+            approving={isSerp ? approvingMeta : approving}
+            sectionLabel={isSerp ? 'meta tags (title e description)' : 'conteúdo desta seção'}
+          />
+        )}
 
         {/* Content */}
         <div className="flex flex-1 overflow-hidden flex-col">
@@ -306,13 +299,10 @@ export function SectionView() {
               editing={editingMeta}
               saving={savingMeta}
               approvalStatus={metaApprovalStatus}
-              approvingMeta={approvingMeta}
               isAdmin={isAdmin}
-              isClient={isClient}
               onEdit={() => setEditingMeta(true)}
               onCancel={() => { setMetaTitleDraft(section.meta_title ?? ''); setMetaDescDraft(section.meta_description ?? ''); setMetaUrlDraft(section.meta_url ?? ''); setEditingMeta(false) }}
               onSave={saveMetaFields}
-              onApprove={setMetaApproval}
             />
           ) : (
             /* ── CONTENT (slider) layout ── */
@@ -412,6 +402,84 @@ export function SectionView() {
 }
 
 // ---------------------------------------------------------------------------
+// ApprovalBar — barra única de aprovação (conteúdo ou SERP), sempre visível para o cliente
+// ---------------------------------------------------------------------------
+
+const APPROVAL_STYLE: Record<string, string> = {
+  approved: 'bg-green-500/15 text-green-700 ring-1 ring-green-500/50',
+  approved_with_observations: 'bg-amber-500/15 text-amber-700 ring-1 ring-amber-500/50',
+  rejected: 'bg-red-500/15 text-red-700 ring-1 ring-red-500/50',
+  pending: 'bg-primary/10 text-primary ring-1 ring-primary/30',
+}
+
+const APPROVAL_LABEL: Record<string, string> = {
+  approved: 'Aprovado',
+  approved_with_observations: 'Aprovado com observações',
+  rejected: 'Reprovado',
+  pending: 'Aguardando sua aprovação',
+}
+
+function ApprovalBar({
+  status,
+  onApprove,
+  approving,
+  sectionLabel,
+}: {
+  status: string
+  onApprove: (s: 'approved' | 'approved_with_observations' | 'rejected') => void
+  approving: boolean
+  sectionLabel: string
+}) {
+  const statusStyle = APPROVAL_STYLE[status] ?? APPROVAL_STYLE.pending
+  const statusText = APPROVAL_LABEL[status] ?? 'Aguardando sua aprovação'
+
+  return (
+    <div className="shrink-0 border-b border-border bg-primary/5 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <p className="text-sm font-semibold text-foreground">Sua aprovação</p>
+          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusStyle}`}>
+            {statusText}
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground w-full sm:w-auto">
+          Como está o {sectionLabel}? Escolha uma opção:
+        </p>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onApprove('approved')}
+            disabled={approving}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-all ${status === 'approved' ? 'border-green-500 bg-green-500/20 text-green-700' : 'border-border bg-background text-muted-foreground hover:border-green-500/50 hover:bg-green-500/10 hover:text-green-700'}`}
+          >
+            <Check className="h-4 w-4 shrink-0" />
+            Aprovado
+          </button>
+          <button
+            type="button"
+            onClick={() => onApprove('approved_with_observations')}
+            disabled={approving}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-all ${status === 'approved_with_observations' ? 'border-amber-500 bg-amber-500/20 text-amber-700' : 'border-border bg-background text-muted-foreground hover:border-amber-500/50 hover:bg-amber-500/10 hover:text-amber-700'}`}
+          >
+            <MessageCircle className="h-4 w-4 shrink-0" />
+            Com observações
+          </button>
+          <button
+            type="button"
+            onClick={() => onApprove('rejected')}
+            disabled={approving}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-all ${status === 'rejected' ? 'border-red-500 bg-red-500/20 text-red-700' : 'border-border bg-background text-muted-foreground hover:border-red-500/50 hover:bg-red-500/10 hover:text-red-700'}`}
+          >
+            <XCircle className="h-4 w-4 shrink-0" />
+            Reprovado
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // SerpView — layout completo para seções do tipo serp_preview
 // ---------------------------------------------------------------------------
 
@@ -445,22 +513,19 @@ interface SerpViewProps {
   editing: boolean
   saving: boolean
   approvalStatus: string
-  approvingMeta: boolean
   isAdmin: boolean
-  isClient: boolean
   onEdit: () => void
   onCancel: () => void
   onSave: () => void
-  onApprove: (status: 'approved' | 'approved_with_observations' | 'rejected') => void
 }
 
 function SerpView({
   metaTitle, metaDescription, metaUrl,
   metaTitleDraft, metaDescDraft, metaUrlDraft,
   setMetaTitleDraft, setMetaDescDraft, setMetaUrlDraft,
-  editing, saving, approvalStatus, approvingMeta,
-  isAdmin, isClient,
-  onEdit, onCancel, onSave, onApprove,
+  editing, saving, approvalStatus,
+  isAdmin,
+  onEdit, onCancel, onSave,
 }: SerpViewProps) {
   const displayTitle = editing ? metaTitleDraft : metaTitle
   const displayDesc = editing ? metaDescDraft : metaDescription
@@ -571,49 +636,27 @@ function SerpView({
         )}
       </div>
 
-      {/* Barra inferior: status de aprovação + ações */}
+      {/* Barra inferior SERP: status (leitura) + edição para admin */}
       <div className="shrink-0 border-t border-border bg-background px-4 py-2 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${metaApprovalStyle[approvalStatus as keyof typeof metaApprovalStyle] ?? metaApprovalStyle.pending}`}>
-            {metaApprovalLabel[approvalStatus as keyof typeof metaApprovalLabel] ?? 'Aguardando aprovação'}
-          </span>
-        </div>
-        <div className="flex items-center gap-1">
-          {/* Aprovação — cliente */}
-          {isClient && (
-            <>
-              <button type="button" onClick={() => onApprove('approved')} disabled={approvingMeta} title="Aprovado"
-                className={`rounded-full p-1.5 transition-all ${approvalStatus === 'approved' ? 'bg-green-500/20 ring-2 ring-green-500 text-green-600' : 'text-muted-foreground hover:bg-green-500/10 hover:text-green-600'}`}>
-                <Check className="h-4 w-4" />
-              </button>
-              <button type="button" onClick={() => onApprove('approved_with_observations')} disabled={approvingMeta} title="Aprovado com observações"
-                className={`rounded-full p-1.5 transition-all ${approvalStatus === 'approved_with_observations' ? 'bg-amber-500/20 ring-2 ring-amber-500 text-amber-600' : 'text-muted-foreground hover:bg-amber-500/10 hover:text-amber-600'}`}>
-                <MessageCircle className="h-4 w-4" />
-              </button>
-              <button type="button" onClick={() => onApprove('rejected')} disabled={approvingMeta} title="Reprovado"
-                className={`rounded-full p-1.5 transition-all ${approvalStatus === 'rejected' ? 'bg-red-500/20 ring-2 ring-red-500 text-red-600' : 'text-muted-foreground hover:bg-red-500/10 hover:text-red-600'}`}>
-                <XCircle className="h-4 w-4" />
-              </button>
-            </>
-          )}
-          {/* Edição — admin */}
-          {isAdmin && (
-            editing ? (
-              <div className="flex items-center gap-1 ml-1">
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={onCancel}>
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-                <Button size="sm" className="h-7 gap-1.5 text-xs" onClick={onSave} disabled={saving}>
-                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><Check className="h-3.5 w-3.5" /> Salvar</>}
-                </Button>
-              </div>
-            ) : (
-              <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs ml-1" onClick={onEdit}>
-                <Edit2 className="h-3.5 w-3.5" /> Editar
+        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${metaApprovalStyle[approvalStatus as keyof typeof metaApprovalStyle] ?? metaApprovalStyle.pending}`}>
+          {metaApprovalLabel[approvalStatus as keyof typeof metaApprovalLabel] ?? 'Aguardando aprovação'}
+        </span>
+        {isAdmin && (
+          editing ? (
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={onCancel}>
+                <X className="h-3.5 w-3.5" />
               </Button>
-            )
-          )}
-        </div>
+              <Button size="sm" className="h-7 gap-1.5 text-xs" onClick={onSave} disabled={saving}>
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><Check className="h-3.5 w-3.5" /> Salvar</>}
+              </Button>
+            </div>
+          ) : (
+            <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs" onClick={onEdit}>
+              <Edit2 className="h-3.5 w-3.5" /> Editar
+            </Button>
+          )
+        )}
       </div>
     </div>
   )

@@ -1,7 +1,8 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Loader2, Edit2, Check, X, MessageCircle, XCircle } from 'lucide-react'
+import { ArrowLeft, Loader2, Edit2, Check, X, MessageCircle, XCircle, FileUp } from 'lucide-react'
+import { marked } from 'marked'
 import { supabase } from '@/lib/supabase'
 import type { Section, FolderWithPages, Client, Page } from '@/lib/database.types'
 import { SliderComparison } from '@/components/SliderComparison/SliderComparison'
@@ -10,6 +11,12 @@ import { NotesEditor } from '@/components/NotesEditor/NotesEditor'
 import { Sidebar } from '@/components/Sidebar/Sidebar'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/Dialog'
 import { useAuth } from '@/hooks/useAuth'
 
 export function SectionView() {
@@ -27,6 +34,10 @@ export function SectionView() {
   const [beforeDraft, setBeforeDraft] = useState('')
   const [afterDraft, setAfterDraft] = useState('')
   const [approving, setApproving] = useState(false)
+  const [importTarget, setImportTarget] = useState<'before' | 'after' | null>(null)
+  const [importText, setImportText] = useState('')
+  const [importConvertToHtml, setImportConvertToHtml] = useState(true)
+  const importFileRef = useRef<HTMLInputElement>(null)
   const isAdmin = profile?.role === 'admin'
   const isClient = profile?.role === 'client'
   const approvalStatus = (section as { approval_status?: string } | null)?.approval_status ?? 'pending'
@@ -123,6 +134,41 @@ export function SectionView() {
     if (!error) {
       setSection((prev) => prev ? { ...prev, approval_status: status, approval_by: profile?.id ?? null, approval_at: new Date().toISOString() } : prev)
     }
+  }
+
+  function openImport(target: 'before' | 'after') {
+    setImportTarget(target)
+    setImportText('')
+    setImportConvertToHtml(true)
+  }
+
+  async function applyImport() {
+    if (!importTarget) return
+    const text = importText.trim()
+    if (!text) {
+      setImportTarget(null)
+      return
+    }
+    let content: string
+    if (importConvertToHtml) {
+      const result = marked(text)
+      content = typeof result === 'string' ? result : await result
+    } else {
+      content = text
+    }
+    if (importTarget === 'before') setBeforeDraft(content)
+    else setAfterDraft(content)
+    setImportTarget(null)
+    setImportText('')
+  }
+
+  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => setImportText(String(reader.result ?? ''))
+    reader.readAsText(file, 'UTF-8')
+    e.target.value = ''
   }
 
   if (loading) {
@@ -248,7 +294,12 @@ export function SectionView() {
                 className="h-full grid grid-cols-2 gap-4"
               >
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-muted-foreground">Texto Antes</label>
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-xs font-medium text-muted-foreground">Texto Antes</label>
+                    <Button type="button" variant="ghost" size="sm" className="h-6 gap-1 text-xs" onClick={() => openImport('before')}>
+                      <FileUp className="h-3 w-3" /> Importar .md
+                    </Button>
+                  </div>
                   <textarea
                     className="flex-1 rounded-lg border border-border bg-background p-4 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-ring leading-relaxed"
                     value={beforeDraft}
@@ -258,7 +309,12 @@ export function SectionView() {
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-muted-foreground">Texto Depois</label>
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-xs font-medium text-muted-foreground">Texto Depois</label>
+                    <Button type="button" variant="ghost" size="sm" className="h-6 gap-1 text-xs" onClick={() => openImport('after')}>
+                      <FileUp className="h-3 w-3" /> Importar .md
+                    </Button>
+                  </div>
                   <textarea
                     className="flex-1 rounded-lg border border-border bg-background p-4 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-ring leading-relaxed"
                     value={afterDraft}
@@ -299,6 +355,51 @@ export function SectionView() {
         currentUserId={profile?.id ?? ''}
         currentUserName={profile?.full_name ?? null}
       />
+
+      {/* Modal Importar .md */}
+      <Dialog open={importTarget !== null} onOpenChange={(open) => !open && setImportTarget(null)}>
+        <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Importar Markdown</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-2 flex flex-col min-h-0">
+            <p className="text-sm text-muted-foreground">
+              Importar para: <strong>{importTarget === 'before' ? 'Texto Antes' : 'Texto Depois'}</strong>
+            </p>
+            <textarea
+              className="min-h-[140px] rounded-lg border border-border bg-background p-3 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="Cole o conteúdo em markdown aqui ou use o botão para selecionar um arquivo .md"
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+            />
+            <div className="flex items-center gap-2">
+              <input
+                ref={importFileRef}
+                type="file"
+                accept=".md,text/markdown,text/plain"
+                className="hidden"
+                onChange={handleImportFile}
+              />
+              <Button type="button" variant="outline" size="sm" onClick={() => importFileRef.current?.click()}>
+                <FileUp className="h-3.5 w-3.5 mr-1.5" /> Selecionar arquivo .md
+              </Button>
+            </div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={importConvertToHtml}
+                onChange={(e) => setImportConvertToHtml(e.target.checked)}
+                className="rounded border-border"
+              />
+              Converter Markdown para HTML (títulos, listas, negrito etc. aparecem formatados no slider)
+            </label>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setImportTarget(null)}>Cancelar</Button>
+              <Button size="sm" onClick={applyImport} disabled={!importText.trim()}>Aplicar</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -75,6 +75,12 @@ O **nome de exibição** vem da coluna `full_name` da tabela `profiles`. Ele é 
 /section/:id    → Visualizador com slider + chat + notas
 ```
 
+## Deploy e domínio
+
+- **Vercel:** o projeto usa `vercel.json` com rewrites para SPA (evita 404 ao dar F5). Configure as variáveis `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` no painel da Vercel.
+- **Domínio próprio (ex.: leitor.scripty.com.br):** no projeto Vercel, vá em **Settings → Domains**, adicione `leitor.scripty.com.br`. A Vercel mostra o que configurar no DNS (geralmente um CNAME `leitor` apontando para `cname.vercel-dns.com`). No provedor do domínio (onde está scripty.com.br), crie um registro CNAME com nome `leitor` e valor indicado pela Vercel.
+- **Não indexar:** a aplicação já envia `<meta name="robots" content="noindex, nofollow">` no `index.html`, então mecanismos de busca não devem indexar nem seguir links da página. Uso interno / ferramenta privada.
+
 ## Funcionalidades
 
 - **Slider Antes/Depois** — arraste a linha central para comparar os textos
@@ -83,5 +89,6 @@ O **nome de exibição** vem da coluna `full_name` da tabela `profiles`. Ele é 
 - **E-mail diário de menções** — opcional: uma Edge Function pode enviar um resumo por e-mail (até 1 por dia) para quem foi marcado; ver [docs/email-mentions.md](docs/email-mentions.md)
 - **Aprovação por seção** — o cliente pode aprovar (verde), aprovar com observações (amarelo) ou reprovar (vermelho) cada seção
 - **Notas de otimização** — editor rico (TipTap) para registrar o que foi feito
+- **Importar Markdown (.md)** — na edição de uma seção (Texto Antes / Depois), use **Importar .md** para colar conteúdo ou selecionar um arquivo; opção de converter Markdown para HTML para exibir títulos, listas e negrito no slider
 - **Multi-cliente** — cada cliente acessa apenas seus próprios conteúdos
 - **Papéis admin/cliente** — admin cria e edita; cliente visualiza, comenta e aprova

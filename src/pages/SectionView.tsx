@@ -22,7 +22,7 @@ import { useAuth } from '@/hooks/useAuth'
 export function SectionView() {
   const { sectionId } = useParams<{ sectionId: string }>()
   const navigate = useNavigate()
-  const { profile, signOut } = useAuth()
+  const { user, profile, signOut } = useAuth()
 
   const [section, setSection] = useState<Section | null>(null)
   const [client, setClient] = useState<Client | null>(null)
@@ -240,6 +240,8 @@ export function SectionView() {
         onAddFolder={undefined}
         onAddPage={undefined}
         onAddSection={undefined}
+        clientId={client?.id}
+        userId={user?.id}
       />
 
       {/* Main */}

@@ -19,6 +19,24 @@ interface ChatPanelProps {
   currentUserName: string | null
 }
 
+function parseMentions(body: string): { type: 'text' | 'mention'; value: string }[] {
+  const segments: { type: 'text' | 'mention'; value: string }[] = []
+  const re = /@(\S+)/g
+  let lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(body)) !== null) {
+    if (m.index > lastIndex) {
+      segments.push({ type: 'text', value: body.slice(lastIndex, m.index) })
+    }
+    segments.push({ type: 'mention', value: m[1] })
+    lastIndex = m.index + m[0].length
+  }
+  if (lastIndex < body.length) {
+    segments.push({ type: 'text', value: body.slice(lastIndex) })
+  }
+  return segments.length ? segments : [{ type: 'text', value: body }]
+}
+
 interface MessageBubbleProps {
   body: string
   senderId: string
@@ -30,6 +48,7 @@ interface MessageBubbleProps {
 function MessageBubble({ body, senderId, currentUserId, senderName, createdAt }: MessageBubbleProps) {
   const isOwn = senderId === currentUserId
   const initials = senderName ? senderName.charAt(0).toUpperCase() : '?'
+  const segments = parseMentions(body)
 
   return (
     <div className={cn('flex gap-2 mb-3', isOwn ? 'flex-row-reverse' : 'flex-row')}>
@@ -47,7 +66,21 @@ function MessageBubble({ body, senderId, currentUserId, senderName, createdAt }:
               : 'bg-muted text-foreground rounded-tl-sm'
           )}
         >
-          {body}
+          {segments.map((seg, i) =>
+            seg.type === 'mention' ? (
+              <span
+                key={i}
+                className={cn(
+                  'font-medium px-0.5 rounded',
+                  isOwn ? 'bg-white/25' : 'bg-primary/20 text-primary'
+                )}
+              >
+                @{seg.value}
+              </span>
+            ) : (
+              <span key={i}>{seg.value}</span>
+            )
+          )}
         </div>
         <span className="text-[10px] text-muted-foreground">
           {format(new Date(createdAt), 'HH:mm', { locale: ptBR })}
@@ -187,7 +220,7 @@ function MessageInput({
 }
 
 export function ChatPanel({ clientId, sectionId, currentUserId, currentUserName }: ChatPanelProps) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(true)
   const [mentionableUsers, setMentionableUsers] = useState<{ id: string; full_name: string | null }[]>([])
   const { messages: chatMessages, sendMessage } = useChatMessages(clientId)
   const { comments, sendComment } = useSectionComments(sectionId)

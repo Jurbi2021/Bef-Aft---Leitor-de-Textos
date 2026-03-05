@@ -86,6 +86,17 @@ CREATE TABLE IF NOT EXISTS section_comments (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 8. Menções lidas (para notificações in-app)
+CREATE TABLE IF NOT EXISTS mention_reads (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  source_type TEXT NOT NULL CHECK (source_type IN ('chat_message', 'section_comment')),
+  source_id UUID NOT NULL,
+  section_id UUID REFERENCES sections(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, source_type, source_id)
+);
+
 -- ============================================================
 -- Row Level Security (RLS)
 -- ============================================================
@@ -97,6 +108,7 @@ ALTER TABLE pages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE section_comments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mention_reads ENABLE ROW LEVEL SECURITY;
 
 -- Helper: verifica se o usuário atual é admin
 CREATE OR REPLACE FUNCTION is_admin()
@@ -195,6 +207,13 @@ CREATE POLICY "section_comments_insert" ON section_comments FOR INSERT
       OR is_admin()
     )
   );
+
+-- Mention reads: usuário só vê e insere suas próprias linhas
+CREATE POLICY "mention_reads_select" ON mention_reads FOR SELECT
+  USING (user_id = auth.uid());
+
+CREATE POLICY "mention_reads_insert" ON mention_reads FOR INSERT
+  WITH CHECK (user_id = auth.uid());
 
 -- ============================================================
 -- RPC: Definir aprovação da seção (só cliente do mesmo cliente)
@@ -348,6 +367,21 @@ ALTER TABLE sections ADD COLUMN IF NOT EXISTS meta_url TEXT NOT NULL DEFAULT '';
 ALTER TABLE sections ADD COLUMN IF NOT EXISTS meta_approval_status TEXT NOT NULL DEFAULT 'pending' CHECK (meta_approval_status IN ('pending', 'approved', 'approved_with_observations', 'rejected'));
 ALTER TABLE sections ADD COLUMN IF NOT EXISTS meta_approval_by UUID REFERENCES auth.users(id) ON DELETE SET NULL;
 ALTER TABLE sections ADD COLUMN IF NOT EXISTS meta_approval_at TIMESTAMPTZ;
+-- Tabela mention_reads (notificações in-app):
+CREATE TABLE IF NOT EXISTS mention_reads (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  source_type TEXT NOT NULL CHECK (source_type IN ('chat_message', 'section_comment')),
+  source_id UUID NOT NULL,
+  section_id UUID REFERENCES sections(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, source_type, source_id)
+);
+ALTER TABLE mention_reads ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "mention_reads_select" ON mention_reads;
+CREATE POLICY "mention_reads_select" ON mention_reads FOR SELECT USING (user_id = auth.uid());
+DROP POLICY IF EXISTS "mention_reads_insert" ON mention_reads;
+CREATE POLICY "mention_reads_insert" ON mention_reads FOR INSERT WITH CHECK (user_id = auth.uid());
 -- (As funções set_section_approval, set_meta_approval e a policy profiles_select já estão acima.)
 
 -- ============================================================

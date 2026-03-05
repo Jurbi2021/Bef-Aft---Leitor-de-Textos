@@ -9,6 +9,7 @@ import {
   LogOut,
   Plus,
   User,
+  Bell,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ScrollArea } from '@/components/ui/ScrollArea'
@@ -16,6 +17,13 @@ import { Button } from '@/components/ui/Button'
 import { Avatar, AvatarFallback } from '@/components/ui/Avatar'
 import { cn } from '@/lib/utils'
 import type { FolderWithPages } from '@/lib/database.types'
+import { useNotifications } from '@/hooks/useNotifications'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/DropdownMenu'
 
 interface SidebarProps {
   clientName: string
@@ -25,6 +33,8 @@ interface SidebarProps {
   onAddFolder?: () => void
   onAddPage?: (folderId: string) => void
   onAddSection?: (pageId: string) => void
+  clientId?: string | null
+  userId?: string | null
 }
 
 interface FolderItemProps {
@@ -117,18 +127,54 @@ export function Sidebar({
   onAddFolder,
   onAddPage,
   onAddSection,
+  clientId,
+  userId,
 }: SidebarProps) {
   const { sectionId } = useParams()
   const isAdmin = profile?.role === 'admin'
+  const { count, items, markAsRead } = useNotifications(clientId ?? null, userId ?? null)
 
   return (
     <aside className="flex h-full w-64 flex-col bg-sidebar text-sidebar-foreground shrink-0">
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-sidebar-border px-4 py-4">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-accent">
+        {clientId && userId && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-accent text-sidebar-foreground hover:bg-sidebar-accent/80 transition-colors"
+                aria-label="Notificações"
+              >
+                <Bell className="h-4 w-4" />
+                {count > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
+                    {count > 99 ? '99+' : count}
+                  </span>
+                )}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-72">
+              {items.length === 0 ? (
+                <DropdownMenuItem disabled className="text-muted-foreground">
+                  Nenhuma menção nova
+                </DropdownMenuItem>
+              ) : (
+                items.map((item) => (
+                  <DropdownMenuItem
+                    key={`${item.sourceType}-${item.sourceId}`}
+                    onSelect={() => markAsRead(item.sourceType, item.sourceId, item.sectionId)}
+                  >
+                    <span className="line-clamp-2 text-left">{item.body}</span>
+                  </DropdownMenuItem>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-accent">
           <AlignLeft className="h-4 w-4 text-sidebar-foreground" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold leading-tight">Leitor Bef/Aft</p>
           <p className="truncate text-xs text-sidebar-foreground/60">{clientName}</p>
         </div>

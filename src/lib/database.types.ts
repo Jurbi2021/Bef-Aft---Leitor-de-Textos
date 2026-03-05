@@ -209,6 +209,32 @@ export interface Database {
           created_at?: string
         }
       }
+      mention_reads: {
+        Row: {
+          id: string
+          user_id: string
+          source_type: 'chat_message' | 'section_comment'
+          source_id: string
+          section_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          source_type: 'chat_message' | 'section_comment'
+          source_id: string
+          section_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          source_type?: 'chat_message' | 'section_comment'
+          source_id?: string
+          section_id?: string | null
+          created_at?: string
+        }
+      }
     }
   }
 }
@@ -220,6 +246,7 @@ export type Page = Database['public']['Tables']['pages']['Row']
 export type Section = Database['public']['Tables']['sections']['Row']
 export type ChatMessage = Database['public']['Tables']['chat_messages']['Row']
 export type SectionComment = Database['public']['Tables']['section_comments']['Row']
+export type MentionRead = Database['public']['Tables']['mention_reads']['Row']
 
 export interface FolderWithPages extends Folder {
   pages: PageWithSections[]

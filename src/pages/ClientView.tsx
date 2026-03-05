@@ -21,7 +21,7 @@ type EditTarget = { type: 'folder' | 'page' | 'section'; id: string; name: strin
 export function ClientView() {
   const { clientId } = useParams<{ clientId: string }>()
   const navigate = useNavigate()
-  const { profile, signOut } = useAuth()
+  const { user, profile, signOut } = useAuth()
 
   const [client, setClient] = useState<Client | null>(null)
   const [folders, setFolders] = useState<FolderWithPages[]>([])
@@ -219,6 +219,8 @@ export function ClientView() {
         onAddFolder={isAdmin ? () => openDialog('folder') : undefined}
         onAddPage={isAdmin ? (folderId) => openDialog('page', folderId) : undefined}
         onAddSection={isAdmin ? (pageId) => openDialog('section', pageId) : undefined}
+        clientId={clientId ?? undefined}
+        userId={user?.id}
       />
 
       {/* Main area */}

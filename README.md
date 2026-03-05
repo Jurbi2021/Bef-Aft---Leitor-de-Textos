@@ -85,8 +85,8 @@ O **nome de exibição** vem da coluna `full_name` da tabela `profiles`. Ele é 
 
 - **Slider Antes/Depois** — arraste a linha central para comparar os textos
 - **Chat em tempo real** — conversa geral e comentários por seção (via Supabase Realtime)
-- **Menções com @** — no chat e nos comentários, digite `@` para marcar outro usuário do mesmo cliente; as menções são salvas para notificações
-- **E-mail diário de menções** — opcional: uma Edge Function pode enviar um resumo por e-mail (até 1 por dia) para quem foi marcado; ver [docs/email-mentions.md](docs/email-mentions.md)
+- **Menções com @** — no chat e nos comentários, digite `@` para marcar outro usuário do mesmo cliente; as menções são salvas e exibidas com destaque visual (roxo claro)
+- **Notificações in-app** — ícone de sino na sidebar exibe o contador de menções não lidas; ao clicar, lista as menções e navega para a seção com o chat aberto
 - **Aprovação por seção** — o cliente pode aprovar (verde), aprovar com observações (amarelo) ou reprovar (vermelho) cada seção
 - **Notas de otimização** — editor rico (TipTap) para registrar o que foi feito
 - **Importar Markdown (.md)** — na edição de uma seção (Texto Antes / Depois), use **Importar .md** para colar conteúdo ou selecionar um arquivo; opção de converter Markdown para HTML para exibir títulos, listas e negrito no slider

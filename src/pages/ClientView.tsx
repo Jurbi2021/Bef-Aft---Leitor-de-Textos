@@ -30,6 +30,7 @@ export function ClientView() {
   const [dialogType, setDialogType] = useState<DialogType>(null)
   const [dialogParentId, setDialogParentId] = useState<string>('')
   const [inputName, setInputName] = useState('')
+  const [sectionTypeChoice, setSectionTypeChoice] = useState<'content' | 'serp_preview'>('content')
   const [creating, setCreating] = useState(false)
 
   const [editingItem, setEditingItem] = useState<EditTarget | null>(null)
@@ -71,6 +72,7 @@ export function ClientView() {
     setDialogParentId(parentId)
     setEditingItem(null)
     setInputName('')
+    setSectionTypeChoice('content')
   }
 
   function openRename(type: EditTarget['type'], id: string, name: string) {
@@ -173,6 +175,7 @@ export function ClientView() {
           page_id: dialogParentId,
           name: inputName.trim(),
           order: page?.sections.length ?? 0,
+          section_type: sectionTypeChoice,
           content_before: '',
           content_after: '',
           defense_note: '',
@@ -401,13 +404,36 @@ export function ClientView() {
               placeholder={
                 dialogType === 'folder' ? 'Ex: Seguro Viagem' :
                 dialogType === 'page' ? 'Ex: Página Principal' :
-                'Ex: FAQ - Benefícios'
+                'Ex: Hero, Benefícios, Preview SERP...'
               }
               value={inputName}
               onChange={(e) => setInputName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
               autoFocus
             />
+            {dialogType === 'section' && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground">Tipo de seção</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSectionTypeChoice('content')}
+                    className={`rounded-lg border p-3 text-left text-xs transition-all ${sectionTypeChoice === 'content' ? 'border-primary bg-primary/5 text-primary' : 'border-border hover:border-primary/40'}`}
+                  >
+                    <p className="font-semibold mb-0.5">Conteúdo</p>
+                    <p className="text-muted-foreground text-[10px] leading-tight">Slider Antes/Depois para textos, headlines, CTAs etc.</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSectionTypeChoice('serp_preview')}
+                    className={`rounded-lg border p-3 text-left text-xs transition-all ${sectionTypeChoice === 'serp_preview' ? 'border-primary bg-primary/5 text-primary' : 'border-border hover:border-primary/40'}`}
+                  >
+                    <p className="font-semibold mb-0.5">Preview SERP</p>
+                    <p className="text-muted-foreground text-[10px] leading-tight">Meta Title e Description com preview visual do Google.</p>
+                  </button>
+                </div>
+              </div>
+            )}
             <Button
               onClick={handleCreate}
               disabled={creating || !inputName.trim()}

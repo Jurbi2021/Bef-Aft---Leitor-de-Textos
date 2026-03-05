@@ -104,6 +104,13 @@ export interface Database {
           approval_status: 'pending' | 'approved' | 'approved_with_observations' | 'rejected'
           approval_by: string | null
           approval_at: string | null
+          section_type: 'content' | 'serp_preview'
+          meta_title: string
+          meta_description: string
+          meta_url: string
+          meta_approval_status: 'pending' | 'approved' | 'approved_with_observations' | 'rejected'
+          meta_approval_by: string | null
+          meta_approval_at: string | null
           updated_at: string
           created_at: string
         }
@@ -115,9 +122,16 @@ export interface Database {
           content_after?: string
           defense_note?: string
           order?: number
+          section_type?: 'content' | 'serp_preview'
           approval_status?: 'pending' | 'approved' | 'approved_with_observations' | 'rejected'
           approval_by?: string | null
           approval_at?: string | null
+          meta_title?: string
+          meta_description?: string
+          meta_url?: string
+          meta_approval_status?: 'pending' | 'approved' | 'approved_with_observations' | 'rejected'
+          meta_approval_by?: string | null
+          meta_approval_at?: string | null
           updated_at?: string
           created_at?: string
         }
@@ -129,9 +143,16 @@ export interface Database {
           content_after?: string
           defense_note?: string
           order?: number
+          section_type?: 'content' | 'serp_preview'
           approval_status?: 'pending' | 'approved' | 'approved_with_observations' | 'rejected'
           approval_by?: string | null
           approval_at?: string | null
+          meta_title?: string
+          meta_description?: string
+          meta_url?: string
+          meta_approval_status?: 'pending' | 'approved' | 'approved_with_observations' | 'rejected'
+          meta_approval_by?: string | null
+          meta_approval_at?: string | null
           updated_at?: string
           created_at?: string
         }

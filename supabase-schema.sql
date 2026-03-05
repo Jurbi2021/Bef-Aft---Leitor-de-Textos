@@ -55,6 +55,13 @@ CREATE TABLE IF NOT EXISTS sections (
   approval_status TEXT NOT NULL DEFAULT 'pending' CHECK (approval_status IN ('pending', 'approved', 'approved_with_observations', 'rejected')),
   approval_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   approval_at TIMESTAMPTZ,
+  section_type TEXT NOT NULL DEFAULT 'content' CHECK (section_type IN ('content', 'serp_preview')),
+  meta_title TEXT NOT NULL DEFAULT '',
+  meta_description TEXT NOT NULL DEFAULT '',
+  meta_url TEXT NOT NULL DEFAULT '',
+  meta_approval_status TEXT NOT NULL DEFAULT 'pending' CHECK (meta_approval_status IN ('pending', 'approved', 'approved_with_observations', 'rejected')),
+  meta_approval_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  meta_approval_at TIMESTAMPTZ,
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -234,6 +241,50 @@ END;
 $$;
 
 -- ============================================================
+-- RPC: Definir aprovação dos Meta tags da seção (só cliente)
+-- Status: approved | approved_with_observations | rejected
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION set_meta_approval(p_section_id UUID, p_status TEXT)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_client_id UUID;
+  v_user_client_id UUID;
+BEGIN
+  p_status := LOWER(TRIM(p_status));
+  IF p_status NOT IN ('approved', 'approved_with_observations', 'rejected') THEN
+    RAISE EXCEPTION 'Status inválido. Use: approved, approved_with_observations ou rejected.';
+  END IF;
+
+  SELECT f.client_id INTO v_client_id
+  FROM sections s
+  JOIN pages p ON p.id = s.page_id
+  JOIN folders f ON f.id = p.folder_id
+  WHERE s.id = p_section_id;
+
+  IF v_client_id IS NULL THEN
+    RAISE EXCEPTION 'Seção não encontrada.';
+  END IF;
+
+  v_user_client_id := current_client_id();
+
+  IF v_user_client_id IS NULL OR v_user_client_id != v_client_id THEN
+    IF NOT is_admin() THEN
+      RAISE EXCEPTION 'Apenas o cliente desta seção pode definir aprovação dos meta tags.';
+    END IF;
+  END IF;
+
+  UPDATE sections
+  SET meta_approval_status = p_status, meta_approval_by = auth.uid(), meta_approval_at = NOW(), updated_at = NOW()
+  WHERE id = p_section_id;
+END;
+$$;
+
+-- ============================================================
 -- RPC: Vincular perfil de usuário a um cliente (só admin)
 -- Usado pelo app em "Conceder acesso" > Vincular agora
 -- ============================================================
@@ -281,14 +332,23 @@ ALTER PUBLICATION supabase_realtime ADD TABLE section_comments;
 
 -- ============================================================
 -- Migração: se você já rodou o schema antes, execute só o bloco
--- abaixo no SQL Editor para adicionar aprovação e menções:
+-- abaixo no SQL Editor para adicionar colunas novas:
 -- ============================================================
--- ALTER TABLE sections ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending' CHECK (approval_status IN ('pending', 'approved', 'approved_with_observations', 'rejected'));
--- ALTER TABLE sections ADD COLUMN IF NOT EXISTS approval_by UUID REFERENCES auth.users(id) ON DELETE SET NULL;
--- ALTER TABLE sections ADD COLUMN IF NOT EXISTS approval_at TIMESTAMPTZ;
--- ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS mention_ids UUID[] DEFAULT '{}';
--- ALTER TABLE section_comments ADD COLUMN IF NOT EXISTS mention_ids UUID[] DEFAULT '{}';
--- (A função set_section_approval e a policy profiles_select já estão acima; se precisar recriar a policy, DROP POLICY "profiles_select" ON profiles; e depois crie de novo com OR client_id = current_client_id().)
+-- Aprovação de conteúdo e menções (versão anterior):
+ALTER TABLE sections ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending' CHECK (approval_status IN ('pending', 'approved', 'approved_with_observations', 'rejected'));
+ALTER TABLE sections ADD COLUMN IF NOT EXISTS approval_by UUID REFERENCES auth.users(id) ON DELETE SET NULL;
+ALTER TABLE sections ADD COLUMN IF NOT EXISTS approval_at TIMESTAMPTZ;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS mention_ids UUID[] DEFAULT '{}';
+ALTER TABLE section_comments ADD COLUMN IF NOT EXISTS mention_ids UUID[] DEFAULT '{}';
+-- Tipo de seção e campos SERP Preview (esta versão):
+ALTER TABLE sections ADD COLUMN IF NOT EXISTS section_type TEXT NOT NULL DEFAULT 'content' CHECK (section_type IN ('content', 'serp_preview'));
+ALTER TABLE sections ADD COLUMN IF NOT EXISTS meta_title TEXT NOT NULL DEFAULT '';
+ALTER TABLE sections ADD COLUMN IF NOT EXISTS meta_description TEXT NOT NULL DEFAULT '';
+ALTER TABLE sections ADD COLUMN IF NOT EXISTS meta_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE sections ADD COLUMN IF NOT EXISTS meta_approval_status TEXT NOT NULL DEFAULT 'pending' CHECK (meta_approval_status IN ('pending', 'approved', 'approved_with_observations', 'rejected'));
+ALTER TABLE sections ADD COLUMN IF NOT EXISTS meta_approval_by UUID REFERENCES auth.users(id) ON DELETE SET NULL;
+ALTER TABLE sections ADD COLUMN IF NOT EXISTS meta_approval_at TIMESTAMPTZ;
+-- (As funções set_section_approval, set_meta_approval e a policy profiles_select já estão acima.)
 
 -- ============================================================
 -- Para criar seu usuário admin, após criar via Auth, execute:

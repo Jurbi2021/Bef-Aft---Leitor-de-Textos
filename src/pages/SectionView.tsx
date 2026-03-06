@@ -140,23 +140,23 @@ export function SectionView() {
     setSection((prev) => prev ? { ...prev, [field]: value } : prev)
   }
 
-  async function setApproval(status: 'approved' | 'approved_with_observations' | 'rejected') {
+  async function setApproval(status: 'approved' | 'approved_with_observations' | 'rejected', note?: string) {
     if (!sectionId) return
     setApproving(true)
-    const { error } = await supabase.rpc('set_section_approval', { p_section_id: sectionId, p_status: status })
+    const { error } = await supabase.rpc('set_section_approval', { p_section_id: sectionId, p_status: status, p_note: note ?? null })
     setApproving(false)
     if (!error) {
-      setSection((prev) => prev ? { ...prev, approval_status: status, approval_by: profile?.id ?? null, approval_at: new Date().toISOString() } : prev)
+      setSection((prev) => prev ? { ...prev, approval_status: status, approval_by: profile?.id ?? null, approval_at: new Date().toISOString(), approval_note: note ?? null } : prev)
     }
   }
 
-  async function setMetaApproval(status: 'approved' | 'approved_with_observations' | 'rejected') {
+  async function setMetaApproval(status: 'approved' | 'approved_with_observations' | 'rejected', note?: string) {
     if (!sectionId) return
     setApprovingMeta(true)
-    const { error } = await supabase.rpc('set_meta_approval', { p_section_id: sectionId, p_status: status })
+    const { error } = await supabase.rpc('set_meta_approval', { p_section_id: sectionId, p_status: status, p_note: note ?? null })
     setApprovingMeta(false)
     if (!error) {
-      setSection((prev) => prev ? { ...prev, meta_approval_status: status, meta_approval_by: profile?.id ?? null, meta_approval_at: new Date().toISOString() } : prev)
+      setSection((prev) => prev ? { ...prev, meta_approval_status: status, meta_approval_by: profile?.id ?? null, meta_approval_at: new Date().toISOString(), meta_approval_note: note ?? null } : prev)
     }
   }
 
@@ -278,6 +278,7 @@ export function SectionView() {
         {isClient && (
           <ApprovalBar
             status={isSerp ? metaApprovalStatus : approvalStatus}
+            approvalNote={isSerp ? section?.meta_approval_note : section?.approval_note}
             onApprove={isSerp ? setMetaApproval : setApproval}
             approving={isSerp ? approvingMeta : approving}
             sectionLabel={isSerp ? 'meta tags (title e description)' : 'conteúdo desta seção'}
@@ -423,26 +424,52 @@ const APPROVAL_LABEL: Record<string, string> = {
 
 function ApprovalBar({
   status,
+  approvalNote,
   onApprove,
   approving,
   sectionLabel,
 }: {
   status: string
-  onApprove: (s: 'approved' | 'approved_with_observations' | 'rejected') => void
+  approvalNote?: string | null
+  onApprove: (s: 'approved' | 'approved_with_observations' | 'rejected', note?: string) => void
   approving: boolean
   sectionLabel: string
 }) {
+  const [noteModal, setNoteModal] = useState<{ status: 'approved_with_observations' | 'rejected' } | null>(null)
+  const [noteDraft, setNoteDraft] = useState('')
   const statusStyle = APPROVAL_STYLE[status] ?? APPROVAL_STYLE.pending
   const statusText = APPROVAL_LABEL[status] ?? 'Aguardando sua aprovação'
+
+  function openNoteModal(s: 'approved_with_observations' | 'rejected') {
+    setNoteModal({ status: s })
+    setNoteDraft('')
+  }
+  function closeNoteModal() {
+    setNoteModal(null)
+    setNoteDraft('')
+  }
+  function confirmWithNote() {
+    if (noteModal) {
+      onApprove(noteModal.status, noteDraft.trim() || undefined)
+      closeNoteModal()
+    }
+  }
 
   return (
     <div className="shrink-0 border-b border-border bg-primary/5 px-4 py-3">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <p className="text-sm font-semibold text-foreground">Sua aprovação</p>
-          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusStyle}`}>
-            {statusText}
-          </span>
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold text-foreground">Sua aprovação</p>
+            <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusStyle}`}>
+              {statusText}
+            </span>
+          </div>
+          {approvalNote && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              <span className="font-medium">Observação:</span> {approvalNote}
+            </p>
+          )}
         </div>
         <p className="text-xs text-muted-foreground w-full sm:w-auto">
           Como está o {sectionLabel}? Escolha uma opção:
@@ -459,7 +486,7 @@ function ApprovalBar({
           </button>
           <button
             type="button"
-            onClick={() => onApprove('approved_with_observations')}
+            onClick={() => openNoteModal('approved_with_observations')}
             disabled={approving}
             className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-all ${status === 'approved_with_observations' ? 'border-amber-500 bg-amber-500/20 text-amber-700' : 'border-border bg-background text-muted-foreground hover:border-amber-500/50 hover:bg-amber-500/10 hover:text-amber-700'}`}
           >
@@ -468,7 +495,7 @@ function ApprovalBar({
           </button>
           <button
             type="button"
-            onClick={() => onApprove('rejected')}
+            onClick={() => openNoteModal('rejected')}
             disabled={approving}
             className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-all ${status === 'rejected' ? 'border-red-500 bg-red-500/20 text-red-700' : 'border-border bg-background text-muted-foreground hover:border-red-500/50 hover:bg-red-500/10 hover:text-red-700'}`}
           >
@@ -477,6 +504,37 @@ function ApprovalBar({
           </button>
         </div>
       </div>
+      {noteModal && (
+        <Dialog open={!!noteModal} onOpenChange={(open) => !open && closeNoteModal()}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                {noteModal.status === 'approved_with_observations' ? 'Aprovado com observações' : 'Reprovado'}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 pt-2">
+              <label className="text-sm text-muted-foreground">
+                Observação (opcional) — motive sua decisão para o time.
+              </label>
+              <textarea
+                value={noteDraft}
+                onChange={(e) => setNoteDraft(e.target.value)}
+                placeholder="Ex.: Ajustar o tom do segundo parágrafo..."
+                className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm resize-y"
+                autoFocus
+              />
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" size="sm" onClick={closeNoteModal}>
+                  Cancelar
+                </Button>
+                <Button size="sm" onClick={confirmWithNote} disabled={approving}>
+                  {approving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Confirmar'}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

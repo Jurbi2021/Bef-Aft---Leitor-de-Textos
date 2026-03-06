@@ -1,7 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
+import { DndContext } from '@dnd-kit/core'
+import type { DragEndEvent } from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { ArrowLeft, ArrowRightLeft, Copy, GripVertical, Loader2, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Client, FolderWithPages, Page, Section } from '@/lib/database.types'
 import { Button } from '@/components/ui/Button'
@@ -17,6 +25,103 @@ import { Sidebar } from '@/components/Sidebar/Sidebar'
 
 type DialogType = 'folder' | 'page' | 'section' | null
 type EditTarget = { type: 'folder' | 'page' | 'section'; id: string; name: string }
+
+function SortableSectionRow({
+  section,
+  isAdmin,
+  onNavigate,
+  onRename,
+  onDuplicate,
+  onMove,
+  onDelete,
+}: {
+  section: Section
+  isAdmin: boolean
+  onNavigate: () => void
+  onRename: (e: React.MouseEvent) => void
+  onDuplicate: (e: React.MouseEvent) => void
+  onMove: (e: React.MouseEvent) => void
+  onDelete: (e: React.MouseEvent) => void
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: section.id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-1 group/item rounded-md hover:bg-accent/50 ${isDragging ? 'opacity-50 z-10' : ''}`}
+    >
+      {isAdmin && (
+        <button
+          type="button"
+          className="touch-none p-1 rounded cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
+          {...attributes}
+          {...listeners}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <GripVertical className="h-3.5 w-3.5" />
+        </button>
+      )}
+      <button
+        onClick={onNavigate}
+        className="flex-1 min-w-0 rounded-md px-3 py-2 text-left text-xs hover:bg-accent hover:text-accent-foreground transition-colors flex items-center justify-between"
+      >
+        <span className="truncate">{section.name}</span>
+        <ArrowLeft className="h-3 w-3 rotate-180 opacity-0 group-hover/item:opacity-100 transition-opacity shrink-0 ml-1" />
+      </button>
+      {isAdmin && (
+        <>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 opacity-0 group-hover/item:opacity-100 shrink-0"
+            onClick={onRename}
+            title="Renomear"
+          >
+            <Pencil className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 opacity-0 group-hover/item:opacity-100 shrink-0"
+            onClick={onDuplicate}
+            title="Duplicar seção"
+          >
+            <Copy className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 opacity-0 group-hover/item:opacity-100 shrink-0"
+            onClick={onMove}
+            title="Mover seção"
+          >
+            <ArrowRightLeft className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-destructive hover:text-destructive opacity-0 group-hover/item:opacity-100 shrink-0"
+            onClick={onDelete}
+            title="Deletar"
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
+        </>
+      )}
+    </div>
+  )
+}
 
 export function ClientView() {
   const { clientId } = useParams<{ clientId: string }>()
@@ -35,8 +140,48 @@ export function ClientView() {
 
   const [editingItem, setEditingItem] = useState<EditTarget | null>(null)
   const [savingRename, setSavingRename] = useState(false)
+  const [duplicateSection, setDuplicateSection] = useState<Section | null>(null)
+  const [duplicateTargetPageId, setDuplicateTargetPageId] = useState<string>('')
+  const [duplicating, setDuplicating] = useState(false)
+  const [moveSection, setMoveSection] = useState<Section | null>(null)
+  const [moveTargetPageId, setMoveTargetPageId] = useState<string>('')
+  const [moving, setMoving] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const isAdmin = profile?.role === 'admin'
+
+  function filterFoldersBySearch(
+    data: FolderWithPages[],
+    query: string
+  ): FolderWithPages[] {
+    const q = query.trim().toLowerCase()
+    if (!q) return data
+    return data
+      .map((folder) => {
+        const folderMatch = folder.name.toLowerCase().includes(q)
+        const pages = folder.pages
+          .map((page) => {
+            const pageMatch = page.name.toLowerCase().includes(q)
+            const sections = page.sections.filter((s) =>
+              s.name.toLowerCase().includes(q)
+            )
+            if (pageMatch || sections.length > 0) {
+              return {
+                ...page,
+                sections: pageMatch ? page.sections : sections,
+              }
+            }
+            return null
+          })
+          .filter((p): p is Page & { sections: Section[] } => p !== null)
+        if (folderMatch || pages.length > 0) {
+          return { ...folder, pages }
+        }
+        return null
+      })
+      .filter((f): f is FolderWithPages => f !== null)
+  }
+  const displayedFolders = filterFoldersBySearch(folders, searchQuery)
 
   useEffect(() => {
     if (clientId) loadData()
@@ -138,6 +283,117 @@ export function ClientView() {
     }
   }
 
+  async function handleDuplicateSection() {
+    if (!duplicateSection || !duplicateTargetPageId) return
+    const targetPage = folders.flatMap((f) => f.pages).find((p) => p.id === duplicateTargetPageId)
+    if (!targetPage) return
+    setDuplicating(true)
+    const { data } = await supabase
+      .from('sections')
+      .insert({
+        page_id: duplicateTargetPageId,
+        name: `${duplicateSection.name} (cópia)`,
+        content_before: duplicateSection.content_before ?? '',
+        content_after: duplicateSection.content_after ?? '',
+        defense_note: duplicateSection.defense_note ?? '',
+        section_type: duplicateSection.section_type ?? 'content',
+        meta_title: duplicateSection.meta_title ?? '',
+        meta_description: duplicateSection.meta_description ?? '',
+        meta_url: duplicateSection.meta_url ?? '',
+        order: targetPage.sections.length,
+      } as object)
+      .select()
+      .single() as { data: Section | null }
+    setDuplicating(false)
+    setDuplicateSection(null)
+    setDuplicateTargetPageId('')
+    if (data) {
+      setFolders((prev) =>
+        prev.map((f) => ({
+          ...f,
+          pages: f.pages.map((p) =>
+            p.id === duplicateTargetPageId ? { ...p, sections: [...p.sections, data] } : p
+          ),
+        }))
+      )
+    }
+  }
+
+  async function openDuplicateModal(section: Section) {
+    const { data: fullSection } = await supabase
+      .from('sections')
+      .select('*')
+      .eq('id', section.id)
+      .single() as { data: Section | null }
+    setDuplicateSection(fullSection ?? section)
+    setDuplicateTargetPageId('')
+  }
+
+  async function handleMoveSection() {
+    if (!moveSection || !moveTargetPageId) return
+    if (moveTargetPageId === moveSection.page_id) {
+      setMoveSection(null)
+      setMoveTargetPageId('')
+      return
+    }
+    const targetPage = folders.flatMap((f) => f.pages).find((p) => p.id === moveTargetPageId)
+    const sourcePage = folders.flatMap((f) => f.pages).find((p) => p.id === moveSection.page_id)
+    if (!targetPage || !sourcePage) return
+    setMoving(true)
+    const { error } = await supabase
+      .from('sections')
+      .update({ page_id: moveTargetPageId, order: targetPage.sections.length } as object)
+      .eq('id', moveSection.id) as { error: unknown }
+    if (!error) {
+      const sourceSections = sourcePage.sections.filter((s) => s.id !== moveSection.id)
+      for (let i = 0; i < sourceSections.length; i++) {
+        await supabase.from('sections').update({ order: i } as object).eq('id', sourceSections[i].id)
+      }
+      setFolders((prev) =>
+        prev.map((f) => ({
+          ...f,
+          pages: f.pages.map((p) => {
+            if (p.id === moveSection.page_id) {
+              return { ...p, sections: p.sections.filter((s) => s.id !== moveSection.id).map((s, i) => ({ ...s, order: i })) }
+            }
+            if (p.id === moveTargetPageId) {
+              return { ...p, sections: [...p.sections, { ...moveSection, page_id: moveTargetPageId, order: p.sections.length }] }
+            }
+            return p
+          }),
+        }))
+      )
+    }
+    setMoving(false)
+    setMoveSection(null)
+    setMoveTargetPageId('')
+  }
+
+  async function handleSectionReorder(pageId: string, activeId: string, overId: string | null) {
+    if (!overId || activeId === overId) return
+    const page = folders.flatMap((f) => f.pages).find((p) => p.id === pageId)
+    if (!page) return
+    const sorted = [...page.sections].sort((a, b) => a.order - b.order)
+    const oldIndex = sorted.findIndex((s) => s.id === activeId)
+    const newIndex = sorted.findIndex((s) => s.id === overId)
+    if (oldIndex === -1 || newIndex === -1) return
+    const reordered = [...sorted]
+    const [removed] = reordered.splice(oldIndex, 1)
+    reordered.splice(newIndex, 0, removed)
+    for (let i = 0; i < reordered.length; i++) {
+      await supabase.from('sections').update({ order: i } as object).eq('id', reordered[i].id)
+    }
+    const sectionsWithNewOrder = reordered.map((s, i) => ({ ...s, order: i }))
+    setFolders((prev) =>
+      prev.map((f) => ({
+        ...f,
+        pages: f.pages.map((p) =>
+          p.id === pageId ? { ...p, sections: sectionsWithNewOrder } : p
+        ),
+      }))
+    )
+  }
+
   async function handleCreate() {
     if (!inputName.trim() || !clientId) return
     setCreating(true)
@@ -225,15 +481,24 @@ export function ClientView() {
 
       {/* Main area */}
       <main className="flex flex-1 flex-col overflow-hidden bg-background">
-        <header className="flex items-center gap-3 border-b border-border px-6 py-4">
+        <header className="flex flex-wrap items-center gap-3 border-b border-border px-6 py-4">
           {isAdmin && (
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate('/dashboard')}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
           )}
-          <div>
+          <div className="min-w-0 flex-1">
             <h1 className="text-sm font-semibold">{client?.name}</h1>
             <p className="text-xs text-muted-foreground">{folders.length} pasta(s)</p>
+          </div>
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar pasta, página ou seção"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-8"
+            />
           </div>
         </header>
 
@@ -252,9 +517,13 @@ export function ClientView() {
                 </Button>
               )}
             </div>
+          ) : displayedFolders.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-xl border border-border py-16 text-center">
+              <p className="text-sm text-muted-foreground">Nenhum resultado para &quot;{searchQuery}&quot;</p>
+            </div>
           ) : (
             <div className="space-y-6">
-              {folders.map((folder, fi) => (
+              {displayedFolders.map((folder, fi) => (
                 <motion.div
                   key={folder.id}
                   initial={{ opacity: 0, y: 12 }}
@@ -340,43 +609,35 @@ export function ClientView() {
                           </div>
                         </div>
                         <div className="p-2 space-y-1">
-                          {page.sections.map((section) => (
-                            <div
-                              key={section.id}
-                              className="flex items-center gap-1 group/item rounded-md hover:bg-accent/50"
-                            >
-                              <button
-                                onClick={() => navigate(`/section/${section.id}`)}
-                                className="flex-1 min-w-0 rounded-md px-3 py-2 text-left text-xs hover:bg-accent hover:text-accent-foreground transition-colors flex items-center justify-between"
+                          {(() => {
+                            const sortedSections = [...page.sections].sort((a, b) => a.order - b.order)
+                            if (sortedSections.length === 0) {
+                              return <p className="px-3 py-2 text-xs text-muted-foreground italic">Nenhuma seção.</p>
+                            }
+                            const sectionIds = sortedSections.map((s) => s.id)
+                            return (
+                              <DndContext
+                                onDragEnd={(event: DragEndEvent) => {
+                                  handleSectionReorder(page.id, String(event.active.id), event.over ? String(event.over.id) : null)
+                                }}
                               >
-                                <span className="truncate">{section.name}</span>
-                                <ArrowLeft className="h-3 w-3 rotate-180 opacity-0 group-hover/item:opacity-100 transition-opacity shrink-0 ml-1" />
-                              </button>
-                              {isAdmin && (
-                                <>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6 opacity-0 group-hover/item:opacity-100 shrink-0"
-                                    onClick={(e) => { e.stopPropagation(); openRename('section', section.id, section.name) }}
-                                  >
-                                    <Pencil className="h-3 w-3" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6 text-destructive hover:text-destructive opacity-0 group-hover/item:opacity-100 shrink-0"
-                                    onClick={(e) => { e.stopPropagation(); handleDeleteSection(section.id) }}
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </Button>
-                                </>
-                              )}
-                            </div>
-                          ))}
-                          {page.sections.length === 0 && (
-                            <p className="px-3 py-2 text-xs text-muted-foreground italic">Nenhuma seção.</p>
-                          )}
+                                <SortableContext items={sectionIds} strategy={verticalListSortingStrategy}>
+                                  {sortedSections.map((section) => (
+                                    <SortableSectionRow
+                                      key={section.id}
+                                      section={section}
+                                      isAdmin={!!isAdmin}
+                                      onNavigate={() => navigate(`/section/${section.id}`)}
+                                      onRename={(e) => { e.stopPropagation(); openRename('section', section.id, section.name) }}
+                                      onDuplicate={(e) => { e.stopPropagation(); openDuplicateModal(section) }}
+                                      onMove={(e) => { e.stopPropagation(); setMoveSection(section); setMoveTargetPageId('') }}
+                                      onDelete={(e) => { e.stopPropagation(); handleDeleteSection(section.id) }}
+                                    />
+                                  ))}
+                                </SortableContext>
+                              </DndContext>
+                            )
+                          })()}
                         </div>
                       </div>
                     ))}
@@ -443,6 +704,86 @@ export function ClientView() {
             >
               {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Criar'}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Move Section Dialog */}
+      <Dialog open={moveSection !== null} onOpenChange={(o) => !o && setMoveSection(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Mover seção</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            {moveSection && (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Mover &quot;{moveSection.name}&quot; para qual página?
+                </p>
+                <select
+                  value={moveTargetPageId}
+                  onChange={(e) => setMoveTargetPageId(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">Selecione a página de destino</option>
+                  {folders.flatMap((f) =>
+                    f.pages
+                      .filter((p) => p.id !== moveSection.page_id)
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {f.name} → {p.name}
+                        </option>
+                      ))
+                  )}
+                </select>
+                <Button
+                  onClick={handleMoveSection}
+                  disabled={moving || !moveTargetPageId}
+                  className="w-full"
+                >
+                  {moving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Mover'}
+                </Button>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate Section Dialog */}
+      <Dialog open={duplicateSection !== null} onOpenChange={(o) => !o && setDuplicateSection(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Duplicar seção</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            {duplicateSection && (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Copiar &quot;{duplicateSection.name}&quot; (conteúdo, defesa e meta tags) para qual página?
+                </p>
+                <select
+                  value={duplicateTargetPageId}
+                  onChange={(e) => setDuplicateTargetPageId(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">Selecione a página de destino</option>
+                  {folders.flatMap((f) =>
+                    f.pages.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {f.name} → {p.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+                <Button
+                  onClick={handleDuplicateSection}
+                  disabled={duplicating || !duplicateTargetPageId}
+                  className="w-full"
+                >
+                  {duplicating ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Duplicar'}
+                </Button>
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>

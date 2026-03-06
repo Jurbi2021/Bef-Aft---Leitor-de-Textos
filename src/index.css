@@ -33,6 +33,9 @@
     --sidebar-accent: 262 50% 28%;
     --sidebar-accent-foreground: 0 0% 100%;
     --sidebar-border: 262 50% 26%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 10%;
   }
 }
 

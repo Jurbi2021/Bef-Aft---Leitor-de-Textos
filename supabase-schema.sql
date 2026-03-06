@@ -97,6 +97,28 @@ CREATE TABLE IF NOT EXISTS mention_reads (
   UNIQUE(user_id, source_type, source_id)
 );
 
+-- 9. Notificações de aprovação (admin é notificado quando cliente aprova/reprova)
+CREATE TABLE IF NOT EXISTS approval_notifications (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  section_id UUID NOT NULL REFERENCES sections(id) ON DELETE CASCADE,
+  client_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  approval_type TEXT NOT NULL CHECK (approval_type IN ('content', 'meta')),
+  approval_status TEXT NOT NULL CHECK (approval_status IN ('approved', 'approved_with_observations', 'rejected')),
+  approved_by UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  section_name TEXT,
+  client_name TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 10. Leitura de notificações de aprovação (admin marca como lida)
+CREATE TABLE IF NOT EXISTS approval_notification_reads (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  notification_id UUID NOT NULL REFERENCES approval_notifications(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, notification_id)
+);
+
 -- ============================================================
 -- Row Level Security (RLS)
 -- ============================================================
@@ -109,6 +131,8 @@ ALTER TABLE sections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE section_comments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mention_reads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE approval_notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE approval_notification_reads ENABLE ROW LEVEL SECURITY;
 
 -- Helper: verifica se o usuário atual é admin
 CREATE OR REPLACE FUNCTION is_admin()
@@ -215,6 +239,17 @@ CREATE POLICY "mention_reads_select" ON mention_reads FOR SELECT
 CREATE POLICY "mention_reads_insert" ON mention_reads FOR INSERT
   WITH CHECK (user_id = auth.uid());
 
+-- Approval notifications: só admin pode ler (para notificações)
+CREATE POLICY "approval_notifications_select" ON approval_notifications FOR SELECT
+  USING (is_admin());
+
+-- Approval notification reads: admin só vê e insere suas próprias
+CREATE POLICY "approval_notification_reads_select" ON approval_notification_reads FOR SELECT
+  USING (user_id = auth.uid());
+
+CREATE POLICY "approval_notification_reads_insert" ON approval_notification_reads FOR INSERT
+  WITH CHECK (user_id = auth.uid());
+
 -- ============================================================
 -- RPC: Definir aprovação da seção (só cliente do mesmo cliente)
 -- Status: approved | approved_with_observations | rejected
@@ -229,16 +264,20 @@ AS $$
 DECLARE
   v_client_id UUID;
   v_user_client_id UUID;
+  v_section_name TEXT;
+  v_client_name TEXT;
+  v_is_client BOOLEAN;
 BEGIN
   p_status := LOWER(TRIM(p_status));
   IF p_status NOT IN ('approved', 'approved_with_observations', 'rejected') THEN
     RAISE EXCEPTION 'Status inválido. Use: approved, approved_with_observations ou rejected.';
   END IF;
 
-  SELECT f.client_id INTO v_client_id
+  SELECT f.client_id, s.name, c.name INTO v_client_id, v_section_name, v_client_name
   FROM sections s
   JOIN pages p ON p.id = s.page_id
   JOIN folders f ON f.id = p.folder_id
+  JOIN clients c ON c.id = f.client_id
   WHERE s.id = p_section_id;
 
   IF v_client_id IS NULL THEN
@@ -246,16 +285,21 @@ BEGIN
   END IF;
 
   v_user_client_id := current_client_id();
+  v_is_client := (v_user_client_id IS NOT NULL AND v_user_client_id = v_client_id);
 
-  IF v_user_client_id IS NULL OR v_user_client_id != v_client_id THEN
-    IF NOT is_admin() THEN
-      RAISE EXCEPTION 'Apenas o cliente desta seção pode definir aprovação.';
-    END IF;
+  IF NOT v_is_client AND NOT is_admin() THEN
+    RAISE EXCEPTION 'Apenas o cliente desta seção pode definir aprovação.';
   END IF;
 
   UPDATE sections
   SET approval_status = p_status, approval_by = auth.uid(), approval_at = NOW(), updated_at = NOW()
   WHERE id = p_section_id;
+
+  -- Notificar admin quando cliente aprova/reprova
+  IF v_is_client THEN
+    INSERT INTO approval_notifications (section_id, client_id, approval_type, approval_status, approved_by, section_name, client_name)
+    VALUES (p_section_id, v_client_id, 'content', p_status, auth.uid(), v_section_name, v_client_name);
+  END IF;
 END;
 $$;
 
@@ -273,16 +317,20 @@ AS $$
 DECLARE
   v_client_id UUID;
   v_user_client_id UUID;
+  v_section_name TEXT;
+  v_client_name TEXT;
+  v_is_client BOOLEAN;
 BEGIN
   p_status := LOWER(TRIM(p_status));
   IF p_status NOT IN ('approved', 'approved_with_observations', 'rejected') THEN
     RAISE EXCEPTION 'Status inválido. Use: approved, approved_with_observations ou rejected.';
   END IF;
 
-  SELECT f.client_id INTO v_client_id
+  SELECT f.client_id, s.name, c.name INTO v_client_id, v_section_name, v_client_name
   FROM sections s
   JOIN pages p ON p.id = s.page_id
   JOIN folders f ON f.id = p.folder_id
+  JOIN clients c ON c.id = f.client_id
   WHERE s.id = p_section_id;
 
   IF v_client_id IS NULL THEN
@@ -290,16 +338,21 @@ BEGIN
   END IF;
 
   v_user_client_id := current_client_id();
+  v_is_client := (v_user_client_id IS NOT NULL AND v_user_client_id = v_client_id);
 
-  IF v_user_client_id IS NULL OR v_user_client_id != v_client_id THEN
-    IF NOT is_admin() THEN
-      RAISE EXCEPTION 'Apenas o cliente desta seção pode definir aprovação dos meta tags.';
-    END IF;
+  IF NOT v_is_client AND NOT is_admin() THEN
+    RAISE EXCEPTION 'Apenas o cliente desta seção pode definir aprovação dos meta tags.';
   END IF;
 
   UPDATE sections
   SET meta_approval_status = p_status, meta_approval_by = auth.uid(), meta_approval_at = NOW(), updated_at = NOW()
   WHERE id = p_section_id;
+
+  -- Notificar admin quando cliente aprova/reprova meta tags
+  IF v_is_client THEN
+    INSERT INTO approval_notifications (section_id, client_id, approval_type, approval_status, approved_by, section_name, client_name)
+    VALUES (p_section_id, v_client_id, 'meta', p_status, auth.uid(), v_section_name, v_client_name);
+  END IF;
 END;
 $$;
 
@@ -382,7 +435,72 @@ DROP POLICY IF EXISTS "mention_reads_select" ON mention_reads;
 CREATE POLICY "mention_reads_select" ON mention_reads FOR SELECT USING (user_id = auth.uid());
 DROP POLICY IF EXISTS "mention_reads_insert" ON mention_reads;
 CREATE POLICY "mention_reads_insert" ON mention_reads FOR INSERT WITH CHECK (user_id = auth.uid());
--- (As funções set_section_approval, set_meta_approval e a policy profiles_select já estão acima.)
+-- Tabelas de notificação de aprovação (admin notificado quando cliente aprova/reprova):
+CREATE TABLE IF NOT EXISTS approval_notifications (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  section_id UUID NOT NULL REFERENCES sections(id) ON DELETE CASCADE,
+  client_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  approval_type TEXT NOT NULL CHECK (approval_type IN ('content', 'meta')),
+  approval_status TEXT NOT NULL CHECK (approval_status IN ('approved', 'approved_with_observations', 'rejected')),
+  approved_by UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  section_name TEXT,
+  client_name TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS approval_notification_reads (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  notification_id UUID NOT NULL REFERENCES approval_notifications(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, notification_id)
+);
+ALTER TABLE approval_notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE approval_notification_reads ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "approval_notifications_select" ON approval_notifications;
+CREATE POLICY "approval_notifications_select" ON approval_notifications FOR SELECT USING (is_admin());
+DROP POLICY IF EXISTS "approval_notification_reads_select" ON approval_notification_reads;
+CREATE POLICY "approval_notification_reads_select" ON approval_notification_reads FOR SELECT USING (user_id = auth.uid());
+DROP POLICY IF EXISTS "approval_notification_reads_insert" ON approval_notification_reads;
+CREATE POLICY "approval_notification_reads_insert" ON approval_notification_reads FOR INSERT WITH CHECK (user_id = auth.uid());
+-- Recriar RPCs para inserir em approval_notifications quando cliente aprova:
+CREATE OR REPLACE FUNCTION set_section_approval(p_section_id UUID, p_status TEXT)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_client_id UUID; v_user_client_id UUID; v_section_name TEXT; v_client_name TEXT; v_is_client BOOLEAN;
+BEGIN
+  p_status := LOWER(TRIM(p_status));
+  IF p_status NOT IN ('approved', 'approved_with_observations', 'rejected') THEN RAISE EXCEPTION 'Status inválido.'; END IF;
+  SELECT f.client_id, s.name, c.name INTO v_client_id, v_section_name, v_client_name
+  FROM sections s JOIN pages p ON p.id = s.page_id JOIN folders f ON f.id = p.folder_id JOIN clients c ON c.id = f.client_id
+  WHERE s.id = p_section_id;
+  IF v_client_id IS NULL THEN RAISE EXCEPTION 'Seção não encontrada.'; END IF;
+  v_user_client_id := current_client_id();
+  v_is_client := (v_user_client_id IS NOT NULL AND v_user_client_id = v_client_id);
+  IF NOT v_is_client AND NOT is_admin() THEN RAISE EXCEPTION 'Apenas o cliente desta seção pode definir aprovação.'; END IF;
+  UPDATE sections SET approval_status = p_status, approval_by = auth.uid(), approval_at = NOW(), updated_at = NOW() WHERE id = p_section_id;
+  IF v_is_client THEN
+    INSERT INTO approval_notifications (section_id, client_id, approval_type, approval_status, approved_by, section_name, client_name)
+    VALUES (p_section_id, v_client_id, 'content', p_status, auth.uid(), v_section_name, v_client_name);
+  END IF;
+END; $$;
+CREATE OR REPLACE FUNCTION set_meta_approval(p_section_id UUID, p_status TEXT)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_client_id UUID; v_user_client_id UUID; v_section_name TEXT; v_client_name TEXT; v_is_client BOOLEAN;
+BEGIN
+  p_status := LOWER(TRIM(p_status));
+  IF p_status NOT IN ('approved', 'approved_with_observations', 'rejected') THEN RAISE EXCEPTION 'Status inválido.'; END IF;
+  SELECT f.client_id, s.name, c.name INTO v_client_id, v_section_name, v_client_name
+  FROM sections s JOIN pages p ON p.id = s.page_id JOIN folders f ON f.id = p.folder_id JOIN clients c ON c.id = f.client_id
+  WHERE s.id = p_section_id;
+  IF v_client_id IS NULL THEN RAISE EXCEPTION 'Seção não encontrada.'; END IF;
+  v_user_client_id := current_client_id();
+  v_is_client := (v_user_client_id IS NOT NULL AND v_user_client_id = v_client_id);
+  IF NOT v_is_client AND NOT is_admin() THEN RAISE EXCEPTION 'Apenas o cliente desta seção pode definir aprovação dos meta tags.'; END IF;
+  UPDATE sections SET meta_approval_status = p_status, meta_approval_by = auth.uid(), meta_approval_at = NOW(), updated_at = NOW() WHERE id = p_section_id;
+  IF v_is_client THEN
+    INSERT INTO approval_notifications (section_id, client_id, approval_type, approval_status, approved_by, section_name, client_name)
+    VALUES (p_section_id, v_client_id, 'meta', p_status, auth.uid(), v_section_name, v_client_name);
+  END IF;
+END; $$;
 
 -- ============================================================
 -- Para criar seu usuário admin, após criar via Auth, execute:

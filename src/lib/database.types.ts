@@ -209,6 +209,61 @@ export interface Database {
           created_at?: string
         }
       }
+      approval_notifications: {
+        Row: {
+          id: string
+          section_id: string
+          client_id: string
+          approval_type: 'content' | 'meta'
+          approval_status: 'approved' | 'approved_with_observations' | 'rejected'
+          approved_by: string
+          section_name: string | null
+          client_name: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          section_id: string
+          client_id: string
+          approval_type: 'content' | 'meta'
+          approval_status: 'approved' | 'approved_with_observations' | 'rejected'
+          approved_by: string
+          section_name?: string | null
+          client_name?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          section_id?: string
+          client_id?: string
+          approval_type?: 'content' | 'meta'
+          approval_status?: 'approved' | 'approved_with_observations' | 'rejected'
+          approved_by?: string
+          section_name?: string | null
+          client_name?: string | null
+          created_at?: string
+        }
+      }
+      approval_notification_reads: {
+        Row: {
+          id: string
+          user_id: string
+          notification_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          notification_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          notification_id?: string
+          created_at?: string
+        }
+      }
       mention_reads: {
         Row: {
           id: string

@@ -132,13 +132,17 @@ export function Sidebar({
 }: SidebarProps) {
   const { sectionId } = useParams()
   const isAdmin = profile?.role === 'admin'
-  const { count, items, markAsRead } = useNotifications(clientId ?? null, userId ?? null)
+  const { count, items, markAsRead } = useNotifications(
+    clientId ?? null,
+    userId ?? null,
+    isAdmin
+  )
 
   return (
     <aside className="flex h-full w-64 flex-col bg-sidebar text-sidebar-foreground shrink-0">
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-sidebar-border px-4 py-4">
-        {clientId && userId && (
+        {(clientId || userId) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -153,11 +157,15 @@ export function Sidebar({
                 )}
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-72">
+            <DropdownMenuContent align="start" className="w-72 bg-background border border-border shadow-lg">
+              <div className="px-3 py-2 border-b border-border">
+                <p className="text-sm font-medium text-foreground">Notificações</p>
+                <p className="text-xs text-muted-foreground">Menções em que você foi marcado</p>
+              </div>
               {items.length === 0 ? (
-                <DropdownMenuItem disabled className="text-muted-foreground">
+                <div className="px-4 py-6 text-sm text-muted-foreground text-center">
                   Nenhuma menção nova
-                </DropdownMenuItem>
+                </div>
               ) : (
                 items.map((item) => (
                   <DropdownMenuItem

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Plus, Users, ArrowRight, Loader2, Trash2, UserPlus, Copy, Check } from 'lucide-react'
+import { Plus, Users, ArrowRight, Loader2, Trash2, UserPlus, Copy, Check, Bell } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Client } from '@/lib/database.types'
 import { Button } from '@/components/ui/Button'
@@ -14,10 +14,19 @@ import {
   DialogTrigger,
 } from '@/components/ui/Dialog'
 import { useAuth } from '@/hooks/useAuth'
+import { useNotifications } from '@/hooks/useNotifications'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/DropdownMenu'
 
 export function Dashboard() {
   const navigate = useNavigate()
-  const { profile, signOut } = useAuth()
+  const { user, profile, signOut } = useAuth()
+  const isAdmin = profile?.role === 'admin'
+  const { count, items, markAsRead } = useNotifications(null, user?.id ?? null, isAdmin)
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [newClientName, setNewClientName] = useState('')
@@ -176,6 +185,43 @@ ON CONFLICT (id) DO UPDATE SET
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {isAdmin && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="relative flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-background text-foreground hover:bg-muted transition-colors"
+                    aria-label="Notificações"
+                  >
+                    <Bell className="h-4 w-4" />
+                    {count > 0 && (
+                      <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
+                        {count > 99 ? '99+' : count}
+                      </span>
+                    )}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-72 bg-background border border-border shadow-lg">
+                  <div className="px-3 py-2 border-b border-border">
+                    <p className="text-sm font-medium text-foreground">Notificações</p>
+                    <p className="text-xs text-muted-foreground">Aprovações e menções</p>
+                  </div>
+                  {items.length === 0 ? (
+                    <div className="px-4 py-6 text-sm text-muted-foreground text-center">
+                      Nenhuma notificação nova
+                    </div>
+                  ) : (
+                    items.map((item) => (
+                      <DropdownMenuItem
+                        key={`${item.sourceType}-${item.sourceId}`}
+                        onSelect={() => markAsRead(item.sourceType, item.sourceId, item.sectionId)}
+                      >
+                        <span className="line-clamp-2 text-left">{item.body}</span>
+                      </DropdownMenuItem>
+                    ))
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             <span className="text-xs text-muted-foreground">{profile?.full_name}</span>
             <Button variant="outline" size="sm" onClick={signOut}>
               Sair

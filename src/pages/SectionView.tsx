@@ -27,7 +27,8 @@ export function SectionView() {
   const [section, setSection] = useState<Section | null>(null)
   const [client, setClient] = useState<Client | null>(null)
   const [folders, setFolders] = useState<FolderWithPages[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loadingInitial, setLoadingInitial] = useState(true)
+  const [loadingSection, setLoadingSection] = useState(true)
 
   const [editingBefore, setEditingBefore] = useState(false)
   const [editingAfter, setEditingAfter] = useState(false)
@@ -58,7 +59,11 @@ export function SectionView() {
   }, [sectionId])
 
   async function loadSection() {
-    setLoading(true)
+    const isSwitch = Boolean(client && folders.length > 0)
+    if (!isSwitch) {
+      setLoadingInitial(true)
+    }
+    setLoadingSection(true)
 
     const { data: sectionData } = await supabase
       .from('sections')
@@ -66,13 +71,31 @@ export function SectionView() {
       .eq('id', sectionId!)
       .single() as { data: Section | null }
 
-    if (!sectionData) { setLoading(false); return }
+    if (!sectionData) {
+      setSection(null)
+      setLoadingInitial(false)
+      setLoadingSection(false)
+      return
+    }
+
     setSection(sectionData)
     setBeforeDraft(sectionData.content_before)
     setAfterDraft(sectionData.content_after)
     setMetaTitleDraft(sectionData.meta_title ?? '')
     setMetaDescDraft(sectionData.meta_description ?? '')
     setMetaUrlDraft(sectionData.meta_url ?? '')
+    setEditingBefore(false)
+    setEditingAfter(false)
+    setEditingMeta(false)
+
+    if (isSwitch) {
+      const pageInFolders = folders.flatMap((f) => f.pages).find((p) => p.id === sectionData.page_id)
+      if (pageInFolders) {
+        setLoadingSection(false)
+        setLoadingInitial(false)
+        return
+      }
+    }
 
     const { data: pageData } = await supabase
       .from('pages')
@@ -80,7 +103,11 @@ export function SectionView() {
       .eq('id', sectionData.page_id)
       .single() as { data: Page | null }
 
-    if (!pageData) { setLoading(false); return }
+    if (!pageData) {
+      setLoadingInitial(false)
+      setLoadingSection(false)
+      return
+    }
 
     const { data: folderData } = await supabase
       .from('folders')
@@ -88,7 +115,11 @@ export function SectionView() {
       .eq('id', pageData.folder_id)
       .single() as { data: { id: string; client_id: string; name: string; order: number; created_at: string } | null }
 
-    if (!folderData) { setLoading(false); return }
+    if (!folderData) {
+      setLoadingInitial(false)
+      setLoadingSection(false)
+      return
+    }
 
     const { data: clientData } = await supabase
       .from('clients')
@@ -116,7 +147,8 @@ export function SectionView() {
       setFolders(normalized)
     }
 
-    setLoading(false)
+    setLoadingInitial(false)
+    setLoadingSection(false)
   }
 
   const saveDefenseNote = useCallback(
@@ -212,7 +244,7 @@ export function SectionView() {
     e.target.value = ''
   }
 
-  if (loading) {
+  if (loadingInitial) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -220,7 +252,7 @@ export function SectionView() {
     )
   }
 
-  if (!section) {
+  if (!section && !loadingSection) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-3">
         <p className="text-muted-foreground">Seção não encontrada.</p>
@@ -258,9 +290,9 @@ export function SectionView() {
           </Button>
           <div className="flex-1 min-w-0">
             <p className="text-xs text-muted-foreground truncate">{client?.name}</p>
-            <h1 className="text-sm font-semibold truncate">{section.name}</h1>
+            <h1 className="text-sm font-semibold truncate">{section?.name ?? '...'}</h1>
           </div>
-          {isAdmin && !isSerp && (
+          {isAdmin && section && !isSerp && (
             <div className="flex items-center gap-2">
               <ContentEditButton label="Editar Antes" editing={editingBefore}
                 onToggle={() => { if (editingBefore) saveContent('content_before', beforeDraft); setEditingBefore(!editingBefore) }}
@@ -275,10 +307,10 @@ export function SectionView() {
         </header>
 
         {/* Barra de aprovação — mesma posição e destaque para conteúdo e SERP */}
-        {isClient && (
+        {isClient && section && (
           <ApprovalBar
             status={isSerp ? metaApprovalStatus : approvalStatus}
-            approvalNote={isSerp ? section?.meta_approval_note : section?.approval_note}
+            approvalNote={isSerp ? section.meta_approval_note : section.approval_note}
             onApprove={isSerp ? setMetaApproval : setApproval}
             approving={isSerp ? approvingMeta : approving}
             sectionLabel={isSerp ? 'meta tags (title e description)' : 'conteúdo desta seção'}
@@ -287,7 +319,11 @@ export function SectionView() {
 
         {/* Content */}
         <div className="flex flex-1 overflow-hidden flex-col">
-          {isSerp ? (
+          {loadingSection ? (
+            <div className="flex flex-1 items-center justify-center p-4">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : section && isSerp ? (
             /* ── SERP PREVIEW layout ── */
             <SerpView
               metaTitle={section.meta_title ?? ''}
@@ -307,7 +343,7 @@ export function SectionView() {
               onCancel={() => { setMetaTitleDraft(section.meta_title ?? ''); setMetaDescDraft(section.meta_description ?? ''); setMetaUrlDraft(section.meta_url ?? ''); setEditingMeta(false) }}
               onSave={saveMetaFields}
             />
-          ) : (
+          ) : section ? (
             /* ── CONTENT (slider) layout ── */
             <>
               <div className="flex-1 overflow-hidden p-4">
@@ -344,14 +380,14 @@ export function SectionView() {
               {/* Notes editor — bottom panel */}
               <NotesEditor value={section.defense_note} onSave={saveDefenseNote} readOnly={!isAdmin} />
             </>
-          )}
+          ) : null}
         </div>
       </div>
 
       {/* Chat — right column */}
       <ChatPanel
         clientId={client?.id ?? ''}
-        sectionId={section.id}
+        sectionId={section?.id ?? ''}
         currentUserId={profile?.id ?? ''}
         currentUserName={profile?.full_name ?? null}
       />
